@@ -35,7 +35,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.14.0")
 
     // Bundled; used only by the error reporter to send opt-in crash reports.
-    implementation("io.sentry:sentry:7.18.1")
+    implementation("io.sentry:sentry:7.22.6")
 
     testImplementation("junit:junit:4.13.2")
 }
