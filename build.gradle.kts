@@ -31,7 +31,7 @@ dependencies {
     }
 
     // Bundled with the plugin; used by the pure JSON parser.
-    implementation("com.google.code.gson:gson:2.11.0")
+    implementation("com.google.code.gson:gson:2.14.0")
 
     // Bundled; used only by the error reporter to send opt-in crash reports.
     implementation("io.sentry:sentry:7.18.1")
