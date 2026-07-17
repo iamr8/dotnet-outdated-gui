@@ -55,6 +55,13 @@ intellijPlatform {
     publishing {
         token = providers.environmentVariable("PUBLISH_TOKEN")
     }
+
+    // `verifyPlugin` (IntelliJ Plugin Verifier) checks binary compatibility with these IDEs.
+    pluginVerification {
+        ides {
+            recommended()
+        }
+    }
 }
 
 kotlin {

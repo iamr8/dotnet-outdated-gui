@@ -1,0 +1,27 @@
+name: Publish to Marketplace
+
+# Manual only. Requires the PUBLISH_TOKEN secret (JetBrains Marketplace token) and a
+# first version already uploaded & approved manually. Version comes from version.txt.
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Publish plugin
+        env:
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: ./gradlew publishPlugin -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
