@@ -1,0 +1,51 @@
+<idea-plugin>
+    <id>com.github.arash.dotnetoutdated</id>
+    <name>dotnet outdated GUI</name>
+    <vendor>arash</vendor>
+
+    <description><![CDATA[
+        Lists every NuGet package in the selected scope with its current version, grouped by
+        project. Refresh runs <code>dotnet outdated</code> to fill the New Version column
+        (the current version when nothing newer exists), colored by upgrade severity
+        (green = patch, yellow = minor, red = major / pre-release).
+        Check the outdated packages you want and upgrade them in place.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <errorHandler implementation="com.github.arash.dotnetoutdated.PluginErrorReportSubmitter"/>
+        <editorNotificationProvider implementation="com.github.arash.dotnetoutdated.ui.DotnetProjectNotificationProvider"/>
+
+        <!--
+          Marketplace Plugin Advertiser: Rider's dotnet dependency collector matches a project's
+          NuGet references against these coordinates and suggests installing this plugin (once
+          published). Covers ubiquitous packages so most real .NET solutions trigger it.
+        -->
+        <dependencySupport kind="dotnet" coordinate="Newtonsoft.Json" displayName="NuGet"/>
+        <dependencySupport kind="dotnet" coordinate="Microsoft.Extensions.DependencyInjection" displayName="NuGet"/>
+        <dependencySupport kind="dotnet" coordinate="Microsoft.Extensions.Hosting" displayName="NuGet"/>
+        <dependencySupport kind="dotnet" coordinate="Microsoft.EntityFrameworkCore" displayName="NuGet"/>
+        <dependencySupport kind="dotnet" coordinate="Microsoft.AspNetCore.App" displayName="NuGet"/>
+        <dependencySupport kind="dotnet" coordinate="Serilog" displayName="NuGet"/>
+        <dependencySupport kind="dotnet" coordinate="Swashbuckle.AspNetCore" displayName="NuGet"/>
+        <dependencySupport kind="dotnet" coordinate="AutoMapper" displayName="NuGet"/>
+        <dependencySupport kind="dotnet" coordinate="FluentValidation" displayName="NuGet"/>
+        <dependencySupport kind="dotnet" coordinate="MediatR" displayName="NuGet"/>
+        <dependencySupport kind="dotnet" coordinate="Dapper" displayName="NuGet"/>
+        <dependencySupport kind="dotnet" coordinate="Polly" displayName="NuGet"/>
+        <dependencySupport kind="dotnet" coordinate="xunit" displayName="NuGet"/>
+        <dependencySupport kind="dotnet" coordinate="NUnit" displayName="NuGet"/>
+        <dependencySupport kind="dotnet" coordinate="Moq" displayName="NuGet"/>
+        <projectConfigurable
+            parentId="tools"
+            id="nuget.extended"
+            displayName="dotnet outdated GUI"
+            instance="com.github.arash.dotnetoutdated.settings.OutdatedConfigurable"/>
+        <toolWindow
+            id="dotnet outdated GUI"
+            anchor="right"
+            icon="/icons/dotnetOutdated.svg"
+            factoryClass="com.github.arash.dotnetoutdated.ui.OutdatedToolWindowFactory"/>
+    </extensions>
+</idea-plugin>
