@@ -1,3 +1,4 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -57,9 +58,10 @@ intellijPlatform {
     }
 
     // `verifyPlugin` (IntelliJ Plugin Verifier) checks binary compatibility with these IDEs.
+    // Pin to released builds — `recommended()` can resolve unreleased EAPs (no until-build bound).
     pluginVerification {
         ides {
-            recommended()
+            ide(IntelliJPlatformType.Rider, "2026.1.4")
         }
     }
 }
