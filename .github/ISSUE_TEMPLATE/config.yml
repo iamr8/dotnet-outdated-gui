@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: dotnet-outdated CLI issues
+    url: https://github.com/dotnet-outdated/dotnet-outdated/issues
+    about: For problems with the underlying dotnet-outdated CLI itself (not this plugin).

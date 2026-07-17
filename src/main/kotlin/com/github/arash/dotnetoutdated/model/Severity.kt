@@ -27,15 +27,6 @@ enum class SeverityColor { RED, YELLOW, GREEN, NONE }
 fun isPrerelease(version: String?): Boolean = version?.contains('-') == true
 
 /**
- * Splits [latest] into (unchangedPrefix, changedSuffix) relative to [current], so only the part
- * that actually changed can be colored — matching the CLI (`4.2.1 -> 4.`**`3.0`**).
- */
-fun changedVersionSuffix(current: String, latest: String): Pair<String, String> {
-    val shared = current.commonPrefixWith(latest).length
-    return latest.substring(0, shared) to latest.substring(shared)
-}
-
-/**
  * Maps a dependency to its legend color. Pre-release latest versions are always red,
  * regardless of the numeric severity, matching the CLI legend.
  */

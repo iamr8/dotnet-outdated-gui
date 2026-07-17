@@ -43,7 +43,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     private val runner = DotnetOutdatedRunner()
     private val optionsService = OutdatedOptionsService.getInstance(project)
-    private val table = OutdatedTreeTable(onSelectionChanged = { toolbar.updateActionsAsync() })
+    private val listView = PackageListView(onSelectionChanged = { toolbar.updateActionsAsync() })
     private val status = JBLabel(" ")
 
     private val toolbar: ActionToolbar = buildToolbar()
@@ -65,7 +65,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     init {
         add(toolbar.component, BorderLayout.NORTH)
-        centerPanel.add(JBScrollPane(table.component), CARD_TABLE)
+        centerPanel.add(JBScrollPane(listView.component), CARD_TABLE)
         centerPanel.add(cliMissingComponent(), CARD_CLI)
         add(centerPanel, BorderLayout.CENTER)
         add(status.apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.SOUTH)
@@ -107,7 +107,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         if (busy) return
         busy = true
         toolbar.updateActionsAsync()
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Checking dotnet-outdated", false) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "dotnet outdated GUI: checking CLI availability", false) {
             override fun run(indicator: ProgressIndicator) {
                 cliAvailable = runner.isOutdatedInstalled()
             }
@@ -185,7 +185,9 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     ): Pair<List<ProjectRow>, List<String>> {
         if (units.isEmpty()) return emptyList<ProjectRow>() to emptyList()
         if (units.size == 1) {
-            indicator.text = units[0].label
+            indicator.isIndeterminate = true
+            indicator.text = "Analyzing ${units[0].label}…"
+            indicator.text2 = "Running dotnet on ${File(units[0].path).name}"
             val (rows, error) = exec(units[0])
             return (rows ?: emptyList()) to (error?.let { listOf("${units[0].label}: $it") } ?: emptyList())
         }
@@ -193,14 +195,18 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         val rows = java.util.Collections.synchronizedList(mutableListOf<ProjectRow>())
         val failures = java.util.Collections.synchronizedList(mutableListOf<String>())
         val done = java.util.concurrent.atomic.AtomicInteger(0)
-        indicator.text = "Scanning ${units.size} projects…"
+        indicator.isIndeterminate = false
+        indicator.text = "Analyzing 0 / ${units.size} projects…"
         val pool = java.util.concurrent.Executors.newFixedThreadPool(minOf(units.size, MAX_PARALLEL))
         try {
             val futures = units.map { unit ->
                 pool.submit {
+                    indicator.text2 = "Analyzing ${unit.label}"
                     val (unitRows, error) = exec(unit)
                     if (unitRows != null) rows.addAll(unitRows) else if (error != null) failures.add("${unit.label}: $error")
-                    indicator.fraction = done.incrementAndGet().toDouble() / units.size
+                    val completed = done.incrementAndGet()
+                    indicator.fraction = completed.toDouble() / units.size
+                    indicator.text = "Analyzed $completed / ${units.size} projects…"
                 }
             }
             for (f in futures) {
@@ -250,9 +256,9 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         return cliAvailable
     }
 
-    /** Render the tree from [allRows] and update the status line. EDT only. */
+    /** Render the list from [allRows] and update the status line. EDT only. */
     private fun render() {
-        table.setData(allRows)
+        listView.setData(allRows)
         val total = allRows.sumOf { it.deps.size }
         val outdated = allRows.sumOf { p -> p.deps.count { it.outdated } }
         val skipped = if (skippedProjects > 0) " ($skippedProjects skipped)" else ""
@@ -308,7 +314,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
             else OutdatedRows.buildFromListing(ListPackagesParser.parse(result.json), unit.path) to null
         }
 
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Listing NuGet packages", true) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "dotnet outdated GUI: listing NuGet packages (dotnet list package)", true) {
             private var rows: List<ProjectRow> = emptyList()
             private var failures: List<String> = emptyList()
 
@@ -349,7 +355,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
             }
         }
 
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Running dotnet outdated", true) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "dotnet outdated GUI: checking for package updates (dotnet outdated)", true) {
             private var rows: List<ProjectRow> = emptyList()
             private var failures: List<String> = emptyList()
 
@@ -413,7 +419,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     private fun runUpgrade() {
         if (busy) return
-        val byTarget = table.checkedByTarget()
+        val byTarget = listView.selectedByTarget()
         val packageCount = byTarget.values.flatten().distinct().size
         if (packageCount == 0) return
 
@@ -433,7 +439,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         toolbar.updateActionsAsync()
         setStatus("Upgrading $packageCount package(s)…")
 
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Upgrading packages", true) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "dotnet outdated GUI: upgrading selected packages (dotnet outdated -u)", true) {
             private val failures = mutableListOf<String>()
 
             override fun run(indicator: ProgressIndicator) {
@@ -520,10 +526,10 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         }
     }
 
-    private inner class UpdateAction : AnAction("Update Selected", "Upgrade the checked packages", AllIcons.Actions.Download) {
+    private inner class UpdateAction : AnAction("Update Selected", "Upgrade the selected packages (multi-select in the list)", AllIcons.Actions.Download) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
         override fun update(e: AnActionEvent) {
-            e.presentation.isEnabled = !busy && table.anyChecked()
+            e.presentation.isEnabled = !busy && listView.hasSelectedOutdated()
         }
         override fun actionPerformed(e: AnActionEvent) = runUpgrade()
     }

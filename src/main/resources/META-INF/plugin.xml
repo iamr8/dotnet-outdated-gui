@@ -1,15 +1,24 @@
 <idea-plugin>
     <id>com.github.arash.dotnetoutdated</id>
     <name>dotnet outdated GUI</name>
-    <vendor>arash</vendor>
+    <vendor url="https://github.com/iamr8" email="arash.shabbeh@gmail.com">iamr8</vendor>
 
     <description><![CDATA[
-        Lists every NuGet package in the selected scope with its current version, grouped by
-        project. Refresh runs <code>dotnet outdated</code> to fill the New Version column
-        (the current version when nothing newer exists), colored by upgrade severity
-        (green = patch, yellow = minor, red = major / pre-release).
-        Check the outdated packages you want and upgrade them in place.
+        A GUI for the <a href="https://github.com/dotnet-outdated/dotnet-outdated">dotnet-outdated</a>
+        CLI. Lists NuGet packages in the open solution's projects with their current version, and
+        on demand runs <code>dotnet outdated</code> to show available updates in a Rider NuGet-style
+        list — new version colored by upgrade severity (green = patch, yellow = minor,
+        red = major / pre-release). Select packages and upgrade them in place.
+        <br/><br/>
+        Source &amp; issues: <a href="https://github.com/iamr8/dotnet-outdated-gui">github.com/iamr8/dotnet-outdated-gui</a>
     ]]></description>
+
+    <change-notes><![CDATA[
+        <b>0.1.0</b>
+        <ul>
+          <li>Initial release: list packages, check updates via dotnet outdated, severity coloring, in-place upgrade.</li>
+        </ul>
+    ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
 
