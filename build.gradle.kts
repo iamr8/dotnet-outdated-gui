@@ -8,7 +8,8 @@ plugins {
 }
 
 group = "com.github.arash"
-version = "0.1.0"
+// Single source of truth for the plugin version (also consumed by CI / releases).
+version = file("version.txt").readText().trim()
 
 repositories {
     mavenCentral()
@@ -45,8 +46,14 @@ intellijPlatform {
     pluginConfiguration {
         ideaVersion {
             sinceBuild = "261"
-            untilBuild = "261.*"
+            // No upper bound: stay compatible with future IDE builds (Marketplace-friendly).
+            untilBuild = provider { null }
         }
+    }
+
+    // `publishPlugin` uses this token (JetBrains Marketplace); provided via env in CI.
+    publishing {
+        token = providers.environmentVariable("PUBLISH_TOKEN")
     }
 }
 

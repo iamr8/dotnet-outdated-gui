@@ -14,10 +14,8 @@
     ]]></description>
 
     <change-notes><![CDATA[
-        <b>0.1.0</b>
-        <ul>
-          <li>Initial release: list packages, check updates via dotnet outdated, severity coloring, in-place upgrade.</li>
-        </ul>
+        See the <a href="https://github.com/iamr8/dotnet-outdated-gui/blob/main/CHANGELOG.md">CHANGELOG</a>
+        for release notes.
     ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>

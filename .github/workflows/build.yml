@@ -10,26 +10,27 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
-      - name: Build plugin
+      - name: Test, verify & build
         # -Dorg.gradle.java.home overrides the machine-specific value in gradle.properties.
         # SENTRY_DSN is injected into sentry.properties at build time (see build.gradle.kts).
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-        run: ./gradlew test buildPlugin -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
+        run: ./gradlew test verifyPluginProjectConfiguration verifyPluginStructure buildPlugin -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
 
       - name: Upload plugin artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dotnet-outdated-gui
           path: build/distributions/*.zip
+          if-no-files-found: error
