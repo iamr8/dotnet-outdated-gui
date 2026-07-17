@@ -1,22 +1,19 @@
 package com.github.arash.dotnetoutdated
 
-import com.intellij.openapi.ide.CopyPasteManager
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.ErrorReportSubmitter
 import com.intellij.openapi.diagnostic.IdeaLoggingEvent
 import com.intellij.openapi.diagnostic.SubmittedReportInfo
 import com.intellij.util.Consumer
 import java.awt.Component
-import java.awt.datatransfer.StringSelection
 
 /**
- * Enables the IDE's error-report dialog for this plugin: errors logged via `Logger.error` show up
- * in the JetBrains error reporter (with a full, selectable stack trace) instead of the tool
- * window's status bar. "Report" copies the assembled report to the clipboard so it can be pasted
- * into an issue.
+ * Sends this plugin's errors to Sentry when the user clicks "Report" in the IDE error dialog.
+ * Nothing is transmitted unless the user explicitly reports. Runs off the EDT.
  */
 class PluginErrorReportSubmitter : ErrorReportSubmitter() {
 
-    override fun getReportActionText(): String = "Copy Error Report to Clipboard"
+    override fun getReportActionText(): String = "Report to the Plugin Author (Sentry)"
 
     override fun submit(
         events: Array<out IdeaLoggingEvent>,
@@ -24,16 +21,26 @@ class PluginErrorReportSubmitter : ErrorReportSubmitter() {
         parentComponent: Component,
         consumer: Consumer<in SubmittedReportInfo>,
     ): Boolean {
+        val throwable = events.firstOrNull()?.throwable
         val report = buildString {
             events.forEach { event ->
                 event.message?.let { appendLine(it) }
                 appendLine(event.throwableText)
                 appendLine()
             }
-            additionalInfo?.let { appendLine("User comment: $it") }
         }
-        CopyPasteManager.getInstance().setContents(StringSelection(report))
-        consumer.consume(SubmittedReportInfo(SubmittedReportInfo.SubmissionStatus.NEW_ISSUE))
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val ok = SentryReporter.report(throwable, report, additionalInfo)
+            val status = if (ok) {
+                SubmittedReportInfo.SubmissionStatus.NEW_ISSUE
+            } else {
+                SubmittedReportInfo.SubmissionStatus.FAILED
+            }
+            ApplicationManager.getApplication().invokeLater {
+                consumer.consume(SubmittedReportInfo(null, if (ok) "Reported to Sentry" else "Report failed", status))
+            }
+        }
         return true
     }
 }

@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Opt-in error reporting to Sentry (only when the user clicks "Report" in the IDE error dialog);
+  uses an isolated client that doesn't touch the IDE's own error handling.
+
 ## [0.1.0] - 2026-07-17
 
 ### Added
