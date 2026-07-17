@@ -44,13 +44,16 @@ class OutdatedReportParserTest {
     }
 
     @Test
-    fun buildsRowsWithUpgradeTargetFromFilePath() {
+    fun buildsSectionsWithProjectFrameworkAndUpgradeTarget() {
         val report = OutdatedReportParser.parse(sample)
-        val rows = OutdatedRows.build(report, fallbackTargetPath = "/repo/App.sln")
-        assertEquals(1, rows.size)
-        assertEquals("/repo/Sahelanthropus.Data/Sahelanthropus.Data.csproj", rows[0].upgradeTarget)
-        assertEquals(3, rows[0].deps.size)
-        assertTrue(rows[0].deps.all { it.outdated })
+        val sections = OutdatedRows.build(report, fallbackTargetPath = "/repo/App.sln")
+        assertEquals(1, sections.size)
+        val section = sections[0]
+        assertEquals("Sahelanthropus.Data", section.projectName)
+        assertEquals("net10.0", section.framework)
+        assertEquals("/repo/Sahelanthropus.Data/Sahelanthropus.Data.csproj", section.upgradeTarget)
+        assertEquals(3, section.deps.size)
+        assertTrue(section.deps.all { it.outdated })
     }
 
     @Test
@@ -74,13 +77,13 @@ class OutdatedReportParserTest {
               ]
             }
         """.trimIndent()
-        val rows = OutdatedRows.build(OutdatedReportParser.parse(json), fallbackTargetPath = "/repo/App.sln")
-        val deps = rows.single().deps.associateBy { it.name }
+        val sections = OutdatedRows.build(OutdatedReportParser.parse(json), fallbackTargetPath = "/repo/App.sln")
+        val deps = sections.single().deps.associateBy { it.name }
 
         val upToDate = deps.getValue("Up.To.Date")
         assertFalse(upToDate.outdated)
         assertEquals("1.2.3", upToDate.current)
-        assertEquals("1.2.3", upToDate.newVersion) // new == current when nothing newer
+        assertEquals("", upToDate.newVersion) // empty until it's actually outdated
 
         val old = deps.getValue("Old.Package")
         assertTrue(old.outdated)

@@ -52,7 +52,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     /** Names of the solution's projects to include in the view (empty = show everything). */
     private var includedProjects: MutableSet<String> = linkedSetOf()
     /** Last CLI result, unfiltered; the view is [includedProjects] applied to this. */
-    private var allRows: List<ProjectRow> = emptyList()
+    private var allRows: List<PackageSection> = emptyList()
     private var updatesChecked = false
     private var skippedProjects = 0
     private var busy = false
@@ -181,9 +181,9 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     private fun runUnits(
         units: List<ScanUnit>,
         indicator: ProgressIndicator,
-        exec: (ScanUnit) -> Pair<List<ProjectRow>?, String?>,
-    ): Pair<List<ProjectRow>, List<String>> {
-        if (units.isEmpty()) return emptyList<ProjectRow>() to emptyList()
+        exec: (ScanUnit) -> Pair<List<PackageSection>?, String?>,
+    ): Pair<List<PackageSection>, List<String>> {
+        if (units.isEmpty()) return emptyList<PackageSection>() to emptyList()
         if (units.size == 1) {
             indicator.isIndeterminate = true
             indicator.text = "Analyzing ${units[0].label}…"
@@ -192,7 +192,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
             return (rows ?: emptyList()) to (error?.let { listOf("${units[0].label}: $it") } ?: emptyList())
         }
 
-        val rows = java.util.Collections.synchronizedList(mutableListOf<ProjectRow>())
+        val rows = java.util.Collections.synchronizedList(mutableListOf<PackageSection>())
         val failures = java.util.Collections.synchronizedList(mutableListOf<String>())
         val done = java.util.concurrent.atomic.AtomicInteger(0)
         indicator.isIndeterminate = false
@@ -260,15 +260,16 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     private fun render() {
         listView.setData(allRows)
         val total = allRows.sumOf { it.deps.size }
-        val outdated = allRows.sumOf { p -> p.deps.count { it.outdated } }
+        val projects = allRows.map { it.projectName }.distinct().size
+        val outdated = allRows.sumOf { s -> s.deps.count { it.outdated } }
         val skipped = if (skippedProjects > 0) " ($skippedProjects skipped)" else ""
         setStatus(
             when {
                 total == 0 && skippedProjects == 0 -> "No NuGet packages found."
                 total == 0 -> "No packages listed$skipped."
-                !updatesChecked -> "$total package(s) in ${allRows.size} project(s)$skipped. Press Check for Updates."
-                outdated == 0 -> "$total package(s) in ${allRows.size} project(s) — all up to date$skipped."
-                else -> "$total package(s) in ${allRows.size} project(s), $outdated outdated$skipped."
+                !updatesChecked -> "$total package(s) in $projects project(s)$skipped. Press Check for Updates."
+                outdated == 0 -> "$total package(s) in $projects project(s) — all up to date$skipped."
+                else -> "$total package(s) in $projects project(s), $outdated outdated$skipped."
             },
         )
     }
@@ -308,14 +309,14 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         toolbar.updateActionsAsync()
         setStatus("Finding packages…")
 
-        val exec: (ScanUnit) -> Pair<List<ProjectRow>?, String?> = { unit ->
+        val exec: (ScanUnit) -> Pair<List<PackageSection>?, String?> = { unit ->
             val result = runner.listPackages(unit.path, basePath(), optionsService.options)
             if (result.json.isBlank()) null to describeFailure(result.stderr, result.stdout)
             else OutdatedRows.buildFromListing(ListPackagesParser.parse(result.json), unit.path) to null
         }
 
         ProgressManager.getInstance().run(object : Task.Backgroundable(project, "dotnet outdated GUI: listing NuGet packages (dotnet list package)", true) {
-            private var rows: List<ProjectRow> = emptyList()
+            private var rows: List<PackageSection> = emptyList()
             private var failures: List<String> = emptyList()
 
             override fun run(indicator: ProgressIndicator) {
@@ -346,7 +347,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         toolbar.updateActionsAsync()
         setStatus("Checking for updates…")
 
-        val exec: (ScanUnit) -> Pair<List<ProjectRow>?, String?> = { unit ->
+        val exec: (ScanUnit) -> Pair<List<PackageSection>?, String?> = { unit ->
             val result = runner.scan(unit.path, basePath(), optionsService.options)
             when {
                 result.timedOut -> null to "timed out"
@@ -356,7 +357,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         }
 
         ProgressManager.getInstance().run(object : Task.Backgroundable(project, "dotnet outdated GUI: checking for package updates (dotnet outdated)", true) {
-            private var rows: List<ProjectRow> = emptyList()
+            private var rows: List<PackageSection> = emptyList()
             private var failures: List<String> = emptyList()
 
             override fun run(indicator: ProgressIndicator) {
@@ -388,8 +389,8 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     private fun runScoped(
         indicator: ProgressIndicator,
         toleratesUnsupported: Boolean,
-        exec: (ScanUnit) -> Pair<List<ProjectRow>?, String?>,
-    ): Pair<List<ProjectRow>, List<String>> {
+        exec: (ScanUnit) -> Pair<List<PackageSection>?, String?>,
+    ): Pair<List<PackageSection>, List<String>> {
         val primary = primaryUnits(toleratesUnsupported)
         val (rows, failures) = runUnits(primary, indicator, exec)
         val wasWholeSolution = primary.size == 1 && primary.first().path == solution?.solutionPath
@@ -401,14 +402,14 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     private fun finishScan(
-        rows: List<ProjectRow>,
+        rows: List<PackageSection>,
         failures: List<String>,
         checked: Boolean,
         hardFailContext: String,
         skipContext: String,
     ) {
         showCard(CARD_TABLE)
-        allRows = rows.sortedBy { it.name.lowercase() } // stable order despite parallel completion
+        allRows = rows // PackageListView sorts sections/rows for a stable order
         skippedProjects = failures.size
         updatesChecked = checked
         render()

@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opt-in error reporting to Sentry (only when the user clicks "Report" in the IDE error dialog);
   uses an isolated client that doesn't touch the IDE's own error handling.
 
+### Changed
+- Group the package list by project and target framework, with a `ProjectName · netX` section
+  header per group (matching the `dotnet outdated` CLI), instead of a single flat list.
+- Color the entire new-version value by severity (no longer per-character portion).
+
 ## [0.1.0] - 2026-07-17
 
 ### Added

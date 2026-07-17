@@ -24,105 +24,115 @@ fun SeverityColor.toJBColor(): Color = when (this) {
     SeverityColor.NONE -> JBColor.foreground()
 }
 
-/** One consolidated package across the scanned projects. */
-class PackageItem(val name: String, val current: String) {
-    var newVersion: String = ""
-    var color: SeverityColor = SeverityColor.NONE
-    var outdated: Boolean = false
-    val targets = linkedSetOf<String>() // project paths to upgrade against
-}
+private sealed class ListEntry
+private class HeaderEntry(val title: String) : ListEntry()
+private class PackageEntry(val dep: DepRow, val target: String) : ListEntry()
 
 /**
- * A flat, Rider-NuGet-style package list: each row shows `Name · Current` on the left and the
- * new version (colored by severity) right-aligned. Multi-select drives "Update Selected".
+ * Grouped package list mirroring the `dotnet outdated` CLI / Rider NuGet view: a
+ * `ProjectName · framework` header per project+TFM section, then one row per package —
+ * `Name · Current` on the left, new version (colored by severity) right-aligned.
+ * Multi-select the package rows to drive "Update Selected".
  */
 class PackageListView(onSelectionChanged: () -> Unit) {
 
-    private val model = DefaultListModel<PackageItem>()
+    private val model = DefaultListModel<ListEntry>()
     private val list = JBList(model).apply {
         selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
-        cellRenderer = PackageCellRenderer()
-        addListSelectionListener { onSelectionChanged() }
+        cellRenderer = EntryRenderer()
+        addListSelectionListener {
+            dropHeaderSelections()
+            onSelectionChanged()
+        }
     }
 
     val component: JComponent get() = list
 
-    /** Flattens project rows into consolidated package items (deduped by name + current version). */
-    fun setData(rows: List<ProjectRow>) {
-        val byKey = LinkedHashMap<String, PackageItem>()
-        for (project in rows) {
-            for (dep in project.deps) {
-                val item = byKey.getOrPut("${dep.name}|${dep.current}") { PackageItem(dep.name, dep.current) }
-                item.targets.add(project.upgradeTarget)
-                if (dep.outdated) {
-                    item.outdated = true
-                    item.newVersion = dep.newVersion
-                    item.color = dep.color
-                } else if (item.newVersion.isEmpty()) {
-                    item.newVersion = dep.newVersion
-                }
-            }
-        }
-        val items = byKey.values.sortedWith(
-            compareByDescending<PackageItem> { it.outdated }.thenBy { it.name.lowercase() },
-        )
+    fun setData(sections: List<PackageSection>) {
         model.clear()
-        items.forEach { model.addElement(it) }
+        sections
+            .sortedWith(compareBy({ it.projectName.lowercase() }, { it.framework }))
+            .forEach { section ->
+                model.addElement(HeaderEntry("${section.projectName}  ·  ${section.framework}"))
+                section.deps
+                    .sortedWith(compareByDescending<DepRow> { it.outdated }.thenBy { it.name.lowercase() })
+                    .forEach { model.addElement(PackageEntry(it, section.upgradeTarget)) }
+            }
     }
 
-    fun hasSelectedOutdated(): Boolean = list.selectedValuesList.any { it.outdated }
+    fun hasSelectedOutdated(): Boolean =
+        list.selectedValuesList.any { it is PackageEntry && it.dep.outdated }
 
-    /** Checked (selected) outdated packages grouped by the project path to upgrade against. */
+    /** Selected outdated packages grouped by the project path to upgrade against. */
     fun selectedByTarget(): Map<String, List<String>> {
         val result = LinkedHashMap<String, MutableList<String>>()
-        for (item in list.selectedValuesList) {
-            if (!item.outdated) continue
-            for (target in item.targets) result.getOrPut(target) { mutableListOf() }.add(item.name)
+        for (entry in list.selectedValuesList) {
+            if (entry is PackageEntry && entry.dep.outdated) {
+                result.getOrPut(entry.target) { mutableListOf() }.add(entry.dep.name)
+            }
         }
         return result.mapValues { it.value.distinct() }
     }
 
-    private class PackageCellRenderer : ListCellRenderer<PackageItem> {
-        private val panel = JPanel(BorderLayout()).apply { border = JBUI.Borders.empty(3, 10) }
+    /** Headers aren't actionable; keep them out of the selection. */
+    private fun dropHeaderSelections() {
+        val headers = list.selectedIndices.filter { model.getElementAt(it) is HeaderEntry }
+        headers.forEach { list.selectionModel.removeSelectionInterval(it, it) }
+    }
+
+    private class EntryRenderer : ListCellRenderer<ListEntry> {
+        private val headerPanel = JPanel(BorderLayout()).apply { border = JBUI.Borders.empty(6, 8, 2, 8) }
+        private val header = SimpleColoredComponent().apply { isOpaque = false }
+        private val rowPanel = JPanel(BorderLayout()).apply { border = JBUI.Borders.empty(3, 18, 3, 10) }
         private val left = SimpleColoredComponent().apply { isOpaque = false }
         private val right = SimpleColoredComponent().apply { isOpaque = false }
 
         init {
-            panel.add(left, BorderLayout.WEST)
-            panel.add(right, BorderLayout.EAST)
+            headerPanel.add(header, BorderLayout.WEST)
+            rowPanel.add(left, BorderLayout.WEST)
+            rowPanel.add(right, BorderLayout.EAST)
         }
 
         override fun getListCellRendererComponent(
-            list: JList<out PackageItem>,
-            item: PackageItem,
+            list: JList<out ListEntry>,
+            entry: ListEntry,
             index: Int,
             selected: Boolean,
             focused: Boolean,
-        ): Component {
-            panel.isOpaque = true
-            panel.background = if (selected) list.selectionBackground else list.background
-            left.clear()
-            right.clear()
-
-            val nameAttr = if (selected) {
-                SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, list.selectionForeground)
-            } else {
-                SimpleTextAttributes.REGULAR_ATTRIBUTES
+        ): Component = when (entry) {
+            is HeaderEntry -> {
+                headerPanel.isOpaque = true
+                headerPanel.background = list.background // headers ignore selection highlight
+                header.clear()
+                header.append(entry.title, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                headerPanel
             }
-            left.append(item.name, nameAttr)
-            left.append("  ·  ", SimpleTextAttributes.GRAYED_ATTRIBUTES) // Rider-style middle dot
-            left.append(item.current, SimpleTextAttributes.GRAYED_ATTRIBUTES)
 
-            if (item.newVersion.isNotEmpty()) {
-                val attr = when {
-                    item.outdated && item.color != SeverityColor.NONE ->
-                        SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, item.color.toJBColor())
-                    selected -> SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, list.selectionForeground)
-                    else -> SimpleTextAttributes.REGULAR_ATTRIBUTES
+            is PackageEntry -> {
+                rowPanel.isOpaque = true
+                rowPanel.background = if (selected) list.selectionBackground else list.background
+                left.clear()
+                right.clear()
+                val nameAttr = if (selected) {
+                    SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, list.selectionForeground)
+                } else {
+                    SimpleTextAttributes.REGULAR_ATTRIBUTES
                 }
-                right.append(item.newVersion, attr)
+                left.append(entry.dep.name, nameAttr)
+                left.append("  ·  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                left.append(entry.dep.current, SimpleTextAttributes.GRAYED_ATTRIBUTES)
+
+                if (entry.dep.newVersion.isNotEmpty()) {
+                    val attr = when {
+                        entry.dep.outdated && entry.dep.color != SeverityColor.NONE ->
+                            SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, entry.dep.color.toJBColor())
+                        selected -> SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, list.selectionForeground)
+                        else -> SimpleTextAttributes.REGULAR_ATTRIBUTES
+                    }
+                    right.append(entry.dep.newVersion, attr)
+                }
+                rowPanel
             }
-            return panel
         }
     }
 }

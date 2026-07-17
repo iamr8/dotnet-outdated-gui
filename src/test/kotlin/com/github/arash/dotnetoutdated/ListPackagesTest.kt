@@ -48,19 +48,20 @@ class ListPackagesTest {
 
     @Test
     fun buildsRowsWithCurrentVersionsAndNothingOutdated() {
-        val rows = OutdatedRows.buildFromListing(ListPackagesParser.parse(sample), fallbackTargetPath = "/repo/App.sln")
-        assertEquals(1, rows.size)
-        val project = rows.single()
-        assertEquals("Demo", project.name) // derived from the .csproj file name
-        assertEquals("/repo/Demo/Demo.csproj", project.upgradeTarget)
+        val sections = OutdatedRows.buildFromListing(ListPackagesParser.parse(sample), fallbackTargetPath = "/repo/App.sln")
+        assertEquals(1, sections.size)
+        val section = sections.single()
+        assertEquals("Demo", section.projectName) // derived from the .csproj file name
+        assertEquals("net10.0", section.framework)
+        assertEquals("/repo/Demo/Demo.csproj", section.upgradeTarget)
 
-        val deps = project.deps.associateBy { it.name }
+        val deps = section.deps.associateBy { it.name }
         assertEquals("13.0.1", deps.getValue("Newtonsoft.Json").current)
         // resolvedVersion wins over the floating requestedVersion
         assertEquals("3.1.1", deps.getValue("Serilog").current)
         // No update check yet: New Version is empty, nothing outdated/checkable.
         assertEquals("", deps.getValue("Serilog").newVersion)
-        assertFalse(project.deps.any { it.outdated })
+        assertFalse(section.deps.any { it.outdated })
     }
 
     @Test
