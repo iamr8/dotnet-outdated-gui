@@ -1,5 +1,5 @@
 <idea-plugin>
-    <id>com.github.arash.dotnetoutdated</id>
+    <id>com.github.iamr8.dotnetoutdated</id>
     <name>dotnet outdated GUI</name>
     <vendor url="https://github.com/iamr8" email="arash.shabbeh@gmail.com">iamr8</vendor>
 
@@ -21,8 +21,8 @@
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <errorHandler implementation="com.github.arash.dotnetoutdated.PluginErrorReportSubmitter"/>
-        <editorNotificationProvider implementation="com.github.arash.dotnetoutdated.ui.DotnetProjectNotificationProvider"/>
+        <errorHandler implementation="com.github.iamr8.dotnetoutdated.PluginErrorReportSubmitter"/>
+        <editorNotificationProvider implementation="com.github.iamr8.dotnetoutdated.ui.DotnetProjectNotificationProvider"/>
 
         <!--
           Marketplace Plugin Advertiser: Rider's dotnet dependency collector matches a project's
@@ -48,11 +48,11 @@
             parentId="tools"
             id="nuget.extended"
             displayName="dotnet outdated GUI"
-            instance="com.github.arash.dotnetoutdated.settings.OutdatedConfigurable"/>
+            instance="com.github.iamr8.dotnetoutdated.settings.OutdatedConfigurable"/>
         <toolWindow
             id="dotnet outdated GUI"
             anchor="right"
             icon="/icons/dotnetOutdated.svg"
-            factoryClass="com.github.arash.dotnetoutdated.ui.OutdatedToolWindowFactory"/>
+            factoryClass="com.github.iamr8.dotnetoutdated.ui.OutdatedToolWindowFactory"/>
     </extensions>
 </idea-plugin>

@@ -7,7 +7,7 @@ plugins {
     id("org.jetbrains.intellij.platform") version "2.11.0"
 }
 
-group = "com.github.arash"
+group = "com.github.iamr8"
 // Single source of truth for the plugin version (also consumed by CI / releases).
 version = file("version.txt").readText().trim()
 
