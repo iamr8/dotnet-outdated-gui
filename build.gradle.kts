@@ -19,9 +19,13 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        // Build against the locally installed Rider (avoids a large SDK download,
-        // exact API match with the IDE the plugin will run in).
-        local("/Applications/Rider.app")
+        // Locally: build against the installed Rider (no big download, exact API match).
+        // Elsewhere (CI, no local install): download the matching Rider SDK.
+        if (file("/Applications/Rider.app").exists()) {
+            local("/Applications/Rider.app")
+        } else {
+            rider("2026.1.4")
+        }
         testFramework(TestFrameworkType.Platform)
     }
 
@@ -59,4 +63,15 @@ java {
 
 tasks.test {
     useJUnit()
+}
+
+// Bake the Sentry DSN into sentry.properties at build time from the SENTRY_DSN env var
+// (a GitHub Actions secret in CI). Nothing sentry-related is committed; a blank value
+// disables reporting. The DSN is a write-only client key, not a build credential.
+tasks.processResources {
+    val sentryDsn = providers.environmentVariable("SENTRY_DSN").orElse("")
+    inputs.property("sentryDsn", sentryDsn)
+    filesMatching("sentry.properties") {
+        expand("sentryDsn" to sentryDsn.get())
+    }
 }
