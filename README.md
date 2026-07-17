@@ -32,8 +32,10 @@ upgrade them in place.
 Errors (missing tool, unrestored project, non-zero exit) are sent to the **IDE error reporter**
 (selectable / copyable, with a "Copy Error Report to Clipboard" action), not the status bar.
 
-New-version colors follow the CLI legend: **red** = major / pre-release, **yellow** = minor,
-**green** = patch; up-to-date packages are uncolored.
+New-version colors follow **NuGet / Semantic Versioning** semantics (the CLI legend):
+**red** = major update or pre-release (possible breaking changes), **yellow** = minor
+(backwards-compatible features), **green** = patch (backwards-compatible fixes); up-to-date
+packages are uncolored.
 
 ### Settings (⚙ toolbar → Settings | Tools | dotnet outdated GUI)
 

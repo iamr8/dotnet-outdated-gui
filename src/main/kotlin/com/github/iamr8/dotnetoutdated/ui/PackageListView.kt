@@ -104,7 +104,8 @@ class PackageListView(onSelectionChanged: () -> Unit) {
                 headerPanel.isOpaque = true
                 headerPanel.background = list.background // headers ignore selection highlight
                 header.clear()
-                header.append(entry.title, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                // Grayed + bold: a project header reads as secondary vs. the package names.
+                header.append(entry.title, SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
                 headerPanel
             }
 

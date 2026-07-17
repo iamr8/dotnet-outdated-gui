@@ -10,6 +10,9 @@
         list — new version colored by upgrade severity (green = patch, yellow = minor,
         red = major / pre-release). Select packages and upgrade them in place.
         <br/><br/>
+        Coloring follows NuGet / Semantic Versioning semantics: patch = backwards-compatible
+        fixes, minor = backwards-compatible features, major or pre-release = possible breaking changes.
+        <br/><br/>
         Source &amp; issues: <a href="https://github.com/iamr8/dotnet-outdated-gui">github.com/iamr8/dotnet-outdated-gui</a>
     ]]></description>
 
