@@ -6,6 +6,14 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     labels: ["dependencies"]
+    ignore:
+      # Major bumps for these need coordinated, manual upgrades (breaking APIs / toolchain).
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # Kotlin is tied to the IDE's bundled Kotlin version — upgrade with the platform.
+      - dependency-name: "org.jetbrains.kotlin.jvm"
+      # The IntelliJ Platform Gradle Plugin is upgraded deliberately (build/config impact).
+      - dependency-name: "org.jetbrains.intellij.platform"
 
   - package-ecosystem: github-actions
     directory: "/"
