@@ -1,15 +1,21 @@
 name: Sync release to main
 
-# After a release lands on `release`, open a PR bringing it back to `main` (the VERSION bump,
-# plus any release-only commits) so the two branches don't drift. Idempotent: skips when `release`
-# isn't ahead of `main`, or when a sync PR is already open.
+# After a release lands on `release`, open a PR bringing it back to `main` (the VERSION bump, plus
+# any release-only commits) so the branches don't drift.
+#
+# The PR is opened from a DISPOSABLE branch (`sync/v<version>-to-main`), not from `release` itself:
+# the repo has delete-branch-on-merge, so merging a head=`release` PR would delete `release` and
+# break the release pipeline. The throwaway branch mirrors `release`, so main gets the same content
+# and `release` is left untouched (the throwaway is what gets auto-deleted).
+#
+# Idempotent: skips when `release` isn't ahead of `main`, or when a sync PR is already open.
 on:
   push:
     branches: [release]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # create/update the disposable sync branch
   pull-requests: write
 
 jobs:
@@ -18,10 +24,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Open release → main sync PR
+      - name: Open release → main sync PR (via disposable branch)
         # GITHUB_TOKEN works, but a PR it opens will NOT trigger build/analyze (Actions' recursion
-        # guard), so a protected main can't be merged. Set a SYNC_PAT secret (fine-grained PAT with
-        # contents + pull-requests write) to have the required checks run automatically.
+        # guard), so a protected main can't be merged. SYNC_PAT (fine-grained PAT, contents +
+        # pull-requests write) makes the required checks run.
         env:
           GH_TOKEN: ${{ secrets.SYNC_PAT || github.token }}
           REPO: ${{ github.repository }}
@@ -29,23 +35,32 @@ jobs:
         run: |
           set -euo pipefail
           BASE=main
-          HEAD=release
+          SRC=release
 
-          AHEAD="$(gh api "repos/$REPO/compare/$BASE...$HEAD" --jq '.ahead_by')"
+          AHEAD="$(gh api "repos/$REPO/compare/$BASE...$SRC" --jq '.ahead_by')"
           if [ "$AHEAD" -eq 0 ]; then
             echo "::notice::release is not ahead of main — nothing to sync."
             exit 0
           fi
 
-          EXISTING="$(gh pr list --repo "$REPO" --base "$BASE" --head "$HEAD" --state open --json number --jq '.[0].number // empty')"
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          BRANCH="sync/v${VERSION}-to-main"
+          SHA="$(gh api "repos/$REPO/git/ref/heads/$SRC" --jq '.object.sha')"
+
+          # Point the disposable branch at the current release tip (create, or fast-forward if it
+          # lingers from a prior run).
+          if ! gh api -X POST "repos/$REPO/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$SHA" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$REPO/git/refs/heads/$BRANCH" -f sha="$SHA" -F force=true >/dev/null
+          fi
+
+          EXISTING="$(gh pr list --repo "$REPO" --base "$BASE" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
           if [ -n "$EXISTING" ]; then
-            echo "::notice::PR #$EXISTING already open for $HEAD → $BASE."
+            echo "::notice::PR #$EXISTING already open for $BRANCH → $BASE."
             exit 0
           fi
 
-          VERSION="$(tr -d '[:space:]' < VERSION)"
-          gh pr create --repo "$REPO" --base "$BASE" --head "$HEAD" \
+          gh pr create --repo "$REPO" --base "$BASE" --head "$BRANCH" \
             --title "chore: sync main with release (v$VERSION)" \
             --assignee "$ASSIGNEE" \
             --label ci \
-            --body $'Automated sync of `release` → `main` after a release.\n\nBrings the `VERSION` bump (and any release-only commits) back to `main` so the branches stay aligned. Main'"'"'s newer workflow changes are preserved by the merge.'
+            --body $'Automated sync of `release` → `main` after a release.\n\nOpened from the disposable branch `'"$BRANCH"$'` (mirrors `release`) so merging it — and the repo'"'"'s delete-branch-on-merge — removes only the throwaway, never `release`. Brings the `VERSION` bump back to `main`; main'"'"'s newer workflow changes are preserved by the merge.'
