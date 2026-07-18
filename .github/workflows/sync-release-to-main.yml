@@ -1,0 +1,51 @@
+name: Sync release to main
+
+# After a release lands on `release`, open a PR bringing it back to `main` (the VERSION bump,
+# plus any release-only commits) so the two branches don't drift. Idempotent: skips when `release`
+# isn't ahead of `main`, or when a sync PR is already open.
+on:
+  push:
+    branches: [release]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  open-sync-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Open release → main sync PR
+        # GITHUB_TOKEN works, but a PR it opens will NOT trigger build/analyze (Actions' recursion
+        # guard), so a protected main can't be merged. Set a SYNC_PAT secret (fine-grained PAT with
+        # contents + pull-requests write) to have the required checks run automatically.
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_PAT || github.token }}
+          REPO: ${{ github.repository }}
+          ASSIGNEE: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          BASE=main
+          HEAD=release
+
+          AHEAD="$(gh api "repos/$REPO/compare/$BASE...$HEAD" --jq '.ahead_by')"
+          if [ "$AHEAD" -eq 0 ]; then
+            echo "::notice::release is not ahead of main — nothing to sync."
+            exit 0
+          fi
+
+          EXISTING="$(gh pr list --repo "$REPO" --base "$BASE" --head "$HEAD" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$EXISTING" ]; then
+            echo "::notice::PR #$EXISTING already open for $HEAD → $BASE."
+            exit 0
+          fi
+
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          gh pr create --repo "$REPO" --base "$BASE" --head "$HEAD" \
+            --title "chore: sync main with release (v$VERSION)" \
+            --assignee "$ASSIGNEE" \
+            --label ci \
+            --body $'Automated sync of `release` → `main` after a release.\n\nBrings the `VERSION` bump (and any release-only commits) back to `main` so the branches stay aligned. Main'"'"'s newer workflow changes are preserved by the merge.'
