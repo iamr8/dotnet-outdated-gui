@@ -101,3 +101,33 @@ jobs:
         # Requires PUBLISH_TOKEN (set after the first manual Marketplace upload + approval).
         if: env.PUBLISH_TOKEN != ''
         run: ./gradlew publishPlugin -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
+
+      - name: Link Marketplace version in release notes
+        # Append a Marketplace link to the GitHub Release. Marketplace exposes version pages by an
+        # internal update id (not the semver), so we resolve it from the public API. A freshly
+        # published version is under review until approved, so the id may not exist yet — in that
+        # case we link the versions page as a fallback.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          PLUGIN_ID=32989
+          SLUG=32989-dotnet-outdated-gui
+          UPDATE_ID=""
+          for _ in 1 2 3 4 5 6; do
+            UPDATE_ID="$(curl -fsSL "https://plugins.jetbrains.com/api/plugins/$PLUGIN_ID/updates" \
+              | jq -r --arg v "$VERSION" 'map(select(.version==$v)) | (first // {}) | .id // empty')"
+            [ -n "$UPDATE_ID" ] && break
+            sleep 15
+          done
+          if [ -n "$UPDATE_ID" ]; then
+            MP_URL="https://plugins.jetbrains.com/plugin/$SLUG/versions/stable/$UPDATE_ID"
+            echo "::notice::Marketplace v$VERSION → $MP_URL"
+          else
+            MP_URL="https://plugins.jetbrains.com/plugin/$SLUG/versions"
+            echo "::notice::Marketplace update id for $VERSION not found yet (under review or not published) — linking versions page."
+          fi
+          BODY="$(gh release view "v$VERSION" --json body -q .body)"
+          printf '%s\n\n---\n📦 **JetBrains Marketplace:** %s\n' "$BODY" "$MP_URL" \
+            | gh release edit "v$VERSION" --notes-file -
