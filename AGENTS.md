@@ -87,9 +87,13 @@ severity, solution parsing, options round-trip) is unit-tested (JUnit4). UI is v
   CodeQL needs a real compile — `clean --no-daemon --no-build-cache`), `compatibility.yml`
   (weekly plugin verifier, pinned to a released Rider — `recommended()` can resolve 404 EAPs),
   `release.yml`, plus Dependabot. Actions are pinned to latest majors.
-- **Release**: `release.yml` (Actions → Release, enter a version, or push a tag `v*`) bumps
-  `VERSION`, tags, builds, creates a GitHub Release with the zip, and publishes to Marketplace if
-  `PUBLISH_TOKEN` is set. Pushing to `main` never releases.
+- **Release model**: branch-based.
+  - `main` = development; `build.yml` only builds + verifies. Never releases.
+  - To release: bump `VERSION` **in the same PR**, then merge that PR into the **`release`**
+    branch. `release.yml` gates on the version — if `VERSION` > the last released `v*` tag it
+    tags `v<VERSION>`, builds, creates a GitHub Release, and publishes to the Marketplace
+    (when `PUBLISH_TOKEN` is set). If `VERSION` is identical to or lower than the last tag, it
+    **skips** (no tag/release/publish). Keep `main` and `release` in sync after a release.
 - **Secrets**: `SENTRY_DSN` (set; runtime error DSN), `PUBLISH_TOKEN` (add after the first manual
   Marketplace upload + approval).
 - Sentry DSN is injected at build time from `SENTRY_DSN` into `sentry.properties` — **never

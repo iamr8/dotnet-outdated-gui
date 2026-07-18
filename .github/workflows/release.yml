@@ -1,17 +1,12 @@
 name: Release
 
-# Release a version deliberately — not on every push to main.
-#  - Manual: provide a version (bumps VERSION, commits, tags v<version>).
-#  - Or: push a tag v* to release the current VERSION.
+# Publishing happens from the `release` branch only. Merge a PR (with the VERSION bump in it)
+# into `release`; if VERSION is higher than the last released tag, this tags, creates a GitHub
+# release, and publishes to the JetBrains Marketplace. main only builds/verifies (see build.yml).
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Version to release, e.g. 0.2.0 (blank = use current VERSION)"
-        required: false
-        type: string
   push:
-    tags: ["v*"]
+    branches: [release]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -27,61 +22,69 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Gate on version
+        id: gate
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$' \
+            || { echo "::error::Invalid version '$VERSION' in VERSION file"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          LATEST="$(git tag -l 'v*' | sed 's/^v//' | sort -V | tail -n1 || true)"
+          if [ -z "$LATEST" ]; then
+            echo "No previous release tag — releasing $VERSION."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          HIGHEST="$(printf '%s\n%s\n' "$VERSION" "$LATEST" | sort -V | tail -n1)"
+          if [ "$VERSION" = "$LATEST" ] || [ "$HIGHEST" != "$VERSION" ]; then
+            echo "::notice::VERSION $VERSION is not higher than last released v$LATEST — skipping release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Releasing $VERSION (previous v$LATEST)."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up JDK 21
+        if: steps.gate.outputs.release == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Set up Gradle
+        if: steps.gate.outputs.release == 'true'
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Resolve version
-        id: v
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          if [ -n "${INPUT_VERSION:-}" ]; then
-            printf '%s\n' "$INPUT_VERSION" > VERSION
-          fi
-          VERSION="$(tr -d '[:space:]' < VERSION)"
-          echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$' \
-            || { echo "Invalid version: '$VERSION'"; exit 1; }
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Build plugin
+        if: steps.gate.outputs.release == 'true'
+        run: ./gradlew buildPlugin -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
 
-      - name: Commit bump & tag (manual runs)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Tag
+        if: steps.gate.outputs.release == 'true'
         env:
-          VERSION: ${{ steps.v.outputs.version }}
+          VERSION: ${{ steps.gate.outputs.version }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet VERSION; then
-            git add VERSION
-            git commit -m "release: v$VERSION"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
           if ! git rev-parse "v$VERSION" >/dev/null 2>&1; then
             git tag "v$VERSION"
             git push origin "v$VERSION"
           fi
 
-      - name: Build plugin
-        run: ./gradlew buildPlugin -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
-
       - name: Create GitHub release
+        if: steps.gate.outputs.release == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: v${{ steps.v.outputs.version }}
-          name: v${{ steps.v.outputs.version }}
+          tag_name: v${{ steps.gate.outputs.version }}
+          name: v${{ steps.gate.outputs.version }}
           generate_release_notes: true
           files: build/distributions/*.zip
 
       - name: Publish to JetBrains Marketplace
-        # Only when a publish token is configured; never fails the release if it can't publish
-        # (e.g. before the first manual upload/approval).
-        if: ${{ env.PUBLISH_TOKEN != '' }}
+        # Requires PUBLISH_TOKEN (set after the first manual Marketplace upload + approval).
+        if: steps.gate.outputs.release == 'true' && env.PUBLISH_TOKEN != ''
         continue-on-error: true
         run: ./gradlew publishPlugin -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace

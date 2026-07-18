@@ -38,6 +38,18 @@ ui/      tool window, package list view, editor notification
 - Match the existing Kotlin style; keep files focused and small.
 - Update `CHANGELOG.md` under `[Unreleased]` with a short note.
 
+## Releasing
+
+Releases are cut from the **`release`** branch, not `main`:
+
+1. In your change (or a dedicated PR), bump the **`VERSION`** file.
+2. Open a PR into **`release`** and merge it.
+3. The Release workflow checks the version — if it's higher than the last released tag, it tags
+   `v<VERSION>`, builds, creates a GitHub Release, and publishes to the JetBrains Marketplace
+   (needs the `PUBLISH_TOKEN` secret). If the version is unchanged or lower, it skips.
+
+`main` only builds and verifies — merging to `main` never releases.
+
 ## Reporting issues
 
 Use the issue templates. Include your Rider version, `dotnet --version`,
