@@ -10,17 +10,22 @@ permissions:
   contents: read
   checks: write # for the test-results check on PRs
 
+env:
+  JAVA_VERSION: "21"
+  JAVA_DISTRIBUTION: temurin
+  ARTIFACT_NAME: dotnet-outdated-gui
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up JDK 21
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v5
         with:
-          distribution: temurin
-          java-version: "21"
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -51,6 +56,6 @@ jobs:
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v7
         with:
-          name: dotnet-outdated-gui
+          name: ${{ env.ARTIFACT_NAME }}
           path: build/distributions/*.zip
           if-no-files-found: error

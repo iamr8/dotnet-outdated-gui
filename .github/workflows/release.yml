@@ -13,6 +13,14 @@ permissions:
   contents: write
   deployments: write
 
+env:
+  JAVA_VERSION: "21"
+  JAVA_DISTRIBUTION: temurin
+  # JetBrains Marketplace identity (numeric id + slug + API/site base).
+  PLUGIN_ID: "32989"
+  PLUGIN_SLUG: 32989-dotnet-outdated-gui
+  MARKETPLACE_BASE: https://plugins.jetbrains.com
+
 jobs:
   # Decide whether this VERSION is a new release (higher than the last v* tag). No deployment here.
   gate:
@@ -57,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: marketplace
-      url: https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui
+      url: ${{ env.MARKETPLACE_BASE }}/plugin/${{ env.PLUGIN_SLUG }}
     env:
       PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -67,11 +75,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up JDK 21
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v5
         with:
-          distribution: temurin
-          java-version: "21"
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -112,20 +120,18 @@ jobs:
           VERSION: ${{ needs.gate.outputs.version }}
         run: |
           set -euo pipefail
-          PLUGIN_ID=32989
-          SLUG=32989-dotnet-outdated-gui
           UPDATE_ID=""
           for _ in 1 2 3 4 5 6; do
-            UPDATE_ID="$(curl -fsSL "https://plugins.jetbrains.com/api/plugins/$PLUGIN_ID/updates" \
+            UPDATE_ID="$(curl -fsSL "$MARKETPLACE_BASE/api/plugins/$PLUGIN_ID/updates" \
               | jq -r --arg v "$VERSION" 'map(select(.version==$v)) | (first // {}) | .id // empty')"
             [ -n "$UPDATE_ID" ] && break
             sleep 15
           done
           if [ -n "$UPDATE_ID" ]; then
-            MP_URL="https://plugins.jetbrains.com/plugin/$SLUG/versions/stable/$UPDATE_ID"
+            MP_URL="$MARKETPLACE_BASE/plugin/$PLUGIN_SLUG/versions/stable/$UPDATE_ID"
             echo "::notice::Marketplace v$VERSION → $MP_URL"
           else
-            MP_URL="https://plugins.jetbrains.com/plugin/$SLUG/versions"
+            MP_URL="$MARKETPLACE_BASE/plugin/$PLUGIN_SLUG/versions"
             echo "::notice::Marketplace update id for $VERSION not found yet (under review or not published) — linking versions page."
           fi
           BODY="$(gh release view "v$VERSION" --json body -q .body)"
