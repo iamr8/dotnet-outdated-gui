@@ -109,4 +109,18 @@ severity, solution parsing, options round-trip) is unit-tested (JUnit4). UI is v
 - **Never commit secrets/tokens.** DSN is injected, tokens live in env / GitHub secrets.
 - Keep logic pure and small; put testable code where it can be unit-tested.
 - License: **MIT** (`LICENSE`).
+
+### Pull requests
+
+Every PR must be enriched — not just a title:
+
+- **Body** follows [`.github/pull_request_template.md`](.github/pull_request_template.md):
+  *Summary* (what & why, `Closes #NN`), *Changes*, *Testing*, *Checklist*, screenshots for UI.
+- **Assignee** set (normally the author, e.g. `iamr8`).
+- At least one **label**: `bug`, `enhancement`, `documentation`, `ci`, or `dependencies`
+  (create a fitting one if none applies).
+- **Base branch**: `main` for development; a **release** PR targets the `release` branch and
+  includes the `VERSION` bump (see the Release model above).
+- Keep it focused — one concern per PR; update `CHANGELOG.md` under `[Unreleased]` for
+  user-facing changes.
 ```
