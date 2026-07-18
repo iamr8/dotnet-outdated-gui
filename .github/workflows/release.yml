@@ -13,14 +13,6 @@ permissions:
   contents: write
   deployments: write
 
-env:
-  JAVA_VERSION: "21"
-  JAVA_DISTRIBUTION: temurin
-  # JetBrains Marketplace identity (numeric id + slug + API/site base).
-  PLUGIN_ID: "32989"
-  PLUGIN_SLUG: 32989-dotnet-outdated-gui
-  MARKETPLACE_BASE: https://plugins.jetbrains.com
-
 jobs:
   # Decide whether this VERSION is a new release (higher than the last v* tag). No deployment here.
   gate:
@@ -65,7 +57,8 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: marketplace
-      url: ${{ env.MARKETPLACE_BASE }}/plugin/${{ env.PLUGIN_SLUG }}
+      # Marketplace slug is the numeric id joined to the repo name, e.g. 32989-dotnet-outdated-gui.
+      url: https://plugins.jetbrains.com/plugin/${{ vars.PLUGIN_ID }}-${{ github.event.repository.name }}
     env:
       PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -75,11 +68,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          java-version: "21"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -118,8 +111,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.gate.outputs.version }}
+          # Numeric plugin id lives in a repo Actions variable; the slug is id + repo name.
+          PLUGIN_ID: ${{ vars.PLUGIN_ID }}
+          REPO_NAME: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
+          MARKETPLACE_BASE="https://plugins.jetbrains.com"
+          PLUGIN_SLUG="${PLUGIN_ID}-${REPO_NAME}"
           UPDATE_ID=""
           for _ in 1 2 3 4 5 6; do
             UPDATE_ID="$(curl -fsSL "$MARKETPLACE_BASE/api/plugins/$PLUGIN_ID/updates" \
