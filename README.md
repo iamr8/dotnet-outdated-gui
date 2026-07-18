@@ -15,6 +15,10 @@ check for updates (colored by NuGet / SemVer severity), and upgrade the ones you
 [![Downloads](https://img.shields.io/jetbrains/plugin/d/32989?style=flat-square&label=downloads)](https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui)
 [![Rating](https://img.shields.io/jetbrains/plugin/r/rating/32989?style=flat-square)](https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui/reviews)
 
+## Screenshot
+
+<img width="207" height="374" alt="Screenshot 2026-07-18 at 12 21 01 PM" src="https://github.com/user-attachments/assets/aa9f0b5c-3f42-4878-a71a-096f28ba71e0" />
+
 ## Features
 
 - **Central Package Management** — reads and updates the central version in
