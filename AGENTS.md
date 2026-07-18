@@ -104,5 +104,5 @@ severity, solution parsing, options round-trip) is unit-tested (JUnit4). UI is v
   (repo-local credential helper `!gh auth git-credential`), not the machine keychain.
 - **Never commit secrets/tokens.** DSN is injected, tokens live in env / GitHub secrets.
 - Keep logic pure and small; put testable code where it can be unit-tested.
-- License: **MIT** (`LICENSE.md`).
+- License: **MIT** (`LICENSE`).
 ```

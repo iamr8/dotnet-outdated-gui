@@ -46,4 +46,4 @@ Use the issue templates. Include your Rider version, `dotnet --version`,
 ## License
 
 By contributing you agree that your contributions are licensed under the repository
-[LICENSE](LICENSE.md).
+[LICENSE](LICENSE).
