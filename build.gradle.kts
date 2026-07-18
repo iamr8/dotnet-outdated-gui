@@ -69,6 +69,10 @@ intellijPlatform {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_21)
+        // Emit real Java default methods instead of Kotlin delegating overrides, so implementing
+        // platform interfaces (e.g. ToolWindowFactory) doesn't generate usages of their
+        // deprecated/experimental default methods (Plugin Verifier warnings).
+        freeCompilerArgs.add("-Xjvm-default=all")
     }
 }
 
