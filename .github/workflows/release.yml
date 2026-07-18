@@ -13,6 +13,14 @@ permissions:
   contents: write
   deployments: write
 
+env:
+  JAVA_VERSION: "21"
+  JAVA_DISTRIBUTION: temurin
+  # JetBrains Marketplace identity (numeric id + slug + API/site base).
+  PLUGIN_ID: "32989"
+  PLUGIN_SLUG: 32989-dotnet-outdated-gui
+  MARKETPLACE_BASE: https://plugins.jetbrains.com
+
 jobs:
   # Decide whether this VERSION is a new release (higher than the last v* tag). No deployment here.
   gate:
@@ -57,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: marketplace
-      url: https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui
+      url: ${{ env.MARKETPLACE_BASE }}/plugin/${{ env.PLUGIN_SLUG }}
     env:
       PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -67,11 +75,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up JDK 21
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v5
         with:
-          distribution: temurin
-          java-version: "21"
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -101,3 +109,31 @@ jobs:
         # Requires PUBLISH_TOKEN (set after the first manual Marketplace upload + approval).
         if: env.PUBLISH_TOKEN != ''
         run: ./gradlew publishPlugin -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
+
+      - name: Link Marketplace version in release notes
+        # Append a Marketplace link to the GitHub Release. Marketplace exposes version pages by an
+        # internal update id (not the semver), so we resolve it from the public API. A freshly
+        # published version is under review until approved, so the id may not exist yet — in that
+        # case we link the versions page as a fallback.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          UPDATE_ID=""
+          for _ in 1 2 3 4 5 6; do
+            UPDATE_ID="$(curl -fsSL "$MARKETPLACE_BASE/api/plugins/$PLUGIN_ID/updates" \
+              | jq -r --arg v "$VERSION" 'map(select(.version==$v)) | (first // {}) | .id // empty')"
+            [ -n "$UPDATE_ID" ] && break
+            sleep 15
+          done
+          if [ -n "$UPDATE_ID" ]; then
+            MP_URL="$MARKETPLACE_BASE/plugin/$PLUGIN_SLUG/versions/stable/$UPDATE_ID"
+            echo "::notice::Marketplace v$VERSION → $MP_URL"
+          else
+            MP_URL="$MARKETPLACE_BASE/plugin/$PLUGIN_SLUG/versions"
+            echo "::notice::Marketplace update id for $VERSION not found yet (under review or not published) — linking versions page."
+          fi
+          BODY="$(gh release view "v$VERSION" --json body -q .body)"
+          printf '%s\n\n---\n📦 **JetBrains Marketplace:** %s\n' "$BODY" "$MP_URL" \
+            | gh release edit "v$VERSION" --notes-file -
