@@ -1,22 +1,26 @@
 # dotnet outdated GUI — Rider plugin
 
 A JetBrains Rider tool window for the [`dotnet-outdated`](https://github.com/dotnet-outdated/dotnet-outdated)
-CLI: list the NuGet packages of the open solution's projects, check for updates (colored by
-NuGet / SemVer severity), and upgrade the ones you pick — in place.
+CLI, built for **real-world .NET solutions** — first-class **Central Package Management**
+(`Directory.Packages.props`) and **NuGet version ranges / floating versions**
+(`[1.0.0,2.0.0)`, `(,3.0.0]`, `3.*`). List the NuGet packages of the open solution's projects,
+check for updates (colored by NuGet / SemVer severity), and upgrade the ones you pick — in place.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/iamr8/dotnet-outdated-gui/build.yml?branch=main&style=flat-square&label=build)](https://github.com/iamr8/dotnet-outdated-gui/actions/workflows/build.yml)
 [![CodeQL](https://img.shields.io/github/actions/workflow/status/iamr8/dotnet-outdated-gui/codeql.yml?branch=main&style=flat-square&label=codeql)](https://github.com/iamr8/dotnet-outdated-gui/actions/workflows/codeql.yml)
 [![Release](https://img.shields.io/github/v/release/iamr8/dotnet-outdated-gui?style=flat-square)](https://github.com/iamr8/dotnet-outdated-gui/releases)
 [![Last commit](https://img.shields.io/github/last-commit/iamr8/dotnet-outdated-gui?style=flat-square)](https://github.com/iamr8/dotnet-outdated-gui/commits/main)
 [![License: MIT](https://img.shields.io/github/license/iamr8/dotnet-outdated-gui?style=flat-square)](LICENSE)
-[![JetBrains Marketplace](https://img.shields.io/jetbrains/plugin/v/com.github.iamr8.dotnetoutdated?style=flat-square&label=marketplace)](https://plugins.jetbrains.com/plugin/com.github.iamr8.dotnetoutdated)
-[![Downloads](https://img.shields.io/jetbrains/plugin/d/com.github.iamr8.dotnetoutdated?style=flat-square&label=downloads)](https://plugins.jetbrains.com/plugin/com.github.iamr8.dotnetoutdated)
-
-<!-- The two JetBrains Marketplace badges activate once the plugin is published; if they render
-     empty, replace `com.github.iamr8.dotnetoutdated` with the numeric Marketplace plugin id. -->
+[![JetBrains Marketplace](https://img.shields.io/jetbrains/plugin/v/32989?style=flat-square&label=marketplace)](https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui)
+[![Downloads](https://img.shields.io/jetbrains/plugin/d/32989?style=flat-square&label=downloads)](https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui)
+[![Rating](https://img.shields.io/jetbrains/plugin/r/rating/32989?style=flat-square)](https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui/reviews)
 
 ## Features
 
+- **Central Package Management** — reads and updates the central version in
+  `Directory.Packages.props`, leaving the versionless `<PackageReference>` in each `.csproj` intact.
+- **NuGet version ranges & floating versions** — interval notation (`[1.0.0,2.0.0)`, `(,3.0.0]`,
+  `[1.2.3]`) and floating (`3.*`) are resolved to the concrete current version, not shown as raw brackets.
 - Lists NuGet packages per project / target framework (`ProjectName · netX` section headers).
 - Checks for updates via `dotnet outdated`; the new version is colored by **NuGet / SemVer**
   severity — green = patch, yellow = minor, red = major / pre-release.
@@ -25,6 +29,27 @@ NuGet / SemVer severity), and upgrade the ones you pick — in place.
 - **Scope** picker over the open solution's projects; parallel per-project scans; handles `.shproj`.
 - **Settings** exposing every `dotnet outdated` argument (Settings | Tools | dotnet outdated GUI).
 - Editor banner on `.csproj` / `Directory.Packages.props`; opt-in error reporting.
+
+## Install
+
+From the [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui):
+
+1. In Rider, open **Settings → Plugins → Marketplace**.
+2. Search for **dotnet outdated GUI**.
+3. Click **Install**, then restart the IDE when prompted.
+
+Or grab a `.zip` from [Releases](https://github.com/iamr8/dotnet-outdated-gui/releases) and install via
+**Settings → Plugins → ⚙ → Install Plugin from Disk…**
+
+> Embedding the JetBrains Marketplace card/install **widgets** (`mp-widget.js`) requires a page that
+> runs JavaScript. GitHub strips `<script>` from READMEs, so they can't render here — use the
+> Marketplace badge/link above on GitHub, and the widgets on your own site:
+>
+> ```html
+> <div id="dog-card"></div>
+> <script src="https://plugins.jetbrains.com/assets/scripts/mp-widget.js"></script>
+> <script>MarketplaceWidget.setupMarketplaceWidget('card', 32989, "#dog-card");</script>
+> ```
 
 ## Requirements
 

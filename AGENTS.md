@@ -55,6 +55,11 @@ root:    PluginErrorReportSubmitter + SentryReporter (opt-in error reporting)
 
 ### Key behaviors
 
+- **Core value prop (lead with this in all user-facing copy)**: works with **Central Package
+  Management** (`Directory.Packages.props` — upgrades the central `<PackageVersion>`, leaves the
+  versionless `<PackageReference>` intact) and **NuGet version ranges / floating versions**
+  (`[1.0.0,2.0.0)`, `(,3.0.0]`, `3.*` — surfaced as the CLI's resolved concrete version, not raw
+  brackets). Both are handled by the underlying CLIs; we surface + upgrade correctly.
 - **Two phases**: Phase 1 = `dotnet list package` (offline, fast, gated by the "List all packages"
   option — OFF by default because it's heavy). Phase 2 = `dotnet outdated` ("Check for Updates").
 - **Scan scope**: whole solution in one call when all projects selected; per-project (parallel,
@@ -109,4 +114,18 @@ severity, solution parsing, options round-trip) is unit-tested (JUnit4). UI is v
 - **Never commit secrets/tokens.** DSN is injected, tokens live in env / GitHub secrets.
 - Keep logic pure and small; put testable code where it can be unit-tested.
 - License: **MIT** (`LICENSE`).
+
+### Pull requests
+
+Every PR must be enriched — not just a title:
+
+- **Body** follows [`.github/pull_request_template.md`](.github/pull_request_template.md):
+  *Summary* (what & why, `Closes #NN`), *Changes*, *Testing*, *Checklist*, screenshots for UI.
+- **Assignee** set (normally the author, e.g. `iamr8`).
+- At least one **label**: `bug`, `enhancement`, `documentation`, `ci`, or `dependencies`
+  (create a fitting one if none applies).
+- **Base branch**: `main` for development; a **release** PR targets the `release` branch and
+  includes the `VERSION` bump (see the Release model above).
+- Keep it focused — one concern per PR; update `CHANGELOG.md` under `[Unreleased]` for
+  user-facing changes.
 ```
