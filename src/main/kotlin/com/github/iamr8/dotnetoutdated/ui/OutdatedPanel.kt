@@ -420,7 +420,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     private fun runUpgrade() {
         if (busy) return
-        val byTarget = listView.selectedByTarget()
+        val byTarget = listView.checkedByTarget()
         val packageCount = byTarget.values.flatten().distinct().size
         if (packageCount == 0) return
 
@@ -527,10 +527,10 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         }
     }
 
-    private inner class UpdateAction : AnAction("Update Selected", "Upgrade the selected packages (multi-select in the list)", AllIcons.Actions.Download) {
+    private inner class UpdateAction : AnAction("Update Selected", "Upgrade the checked packages", AllIcons.Actions.Download) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
         override fun update(e: AnActionEvent) {
-            e.presentation.isEnabled = !busy && listView.hasSelectedOutdated()
+            e.presentation.isEnabled = !busy && listView.hasChecked()
         }
         override fun actionPerformed(e: AnActionEvent) = runUpgrade()
     }

@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Group the package list by project and target framework, with a `ProjectName · netX` section
   header per group (matching the `dotnet outdated` CLI), instead of a single flat list.
 - Color the entire new-version value by severity (no longer per-character portion).
+- Per-row checkboxes (multi-select + Space to toggle) to choose packages to update; grayed
+  project headers; type-to-search (speed search) by package/project name.
 
 ## [0.1.0] - 2026-07-17
 

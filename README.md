@@ -26,8 +26,9 @@ upgrade them in place.
 3. **Scope** — the current open solution; check/uncheck which of its **loaded projects** to show.
 4. **Check for Updates** — runs `dotnet outdated -utd` to fill **New Version**, and colors the
    whole outdated row by severity (**red** major/pre-release, **yellow** minor, **green** patch).
-5. Check outdated packages, then **Update Selected** — runs `dotnet outdated -u -inc <pkg> …`
-   and re-scans. Up-to-date packages can't be checked.
+5. **Check** the packages you want (checkbox per row; multi-select rows + <kbd>Space</kbd> toggles
+   them all), then **Update Selected** — runs `dotnet outdated -u -inc <pkg> …` and re-scans.
+   Up-to-date packages can't be checked. Start typing to **speed-search** by package/project name.
 
 Errors (missing tool, unrestored project, non-zero exit) are sent to the **IDE error reporter**
 (selectable / copyable, with a "Copy Error Report to Clipboard" action), not the status bar.
