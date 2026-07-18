@@ -1,8 +1,10 @@
 # dotnet outdated GUI — Rider plugin
 
 A JetBrains Rider tool window for the [`dotnet-outdated`](https://github.com/dotnet-outdated/dotnet-outdated)
-CLI: list the NuGet packages of the open solution's projects, check for updates (colored by
-NuGet / SemVer severity), and upgrade the ones you pick — in place.
+CLI, built for **real-world .NET solutions** — first-class **Central Package Management**
+(`Directory.Packages.props`) and **NuGet version ranges / floating versions**
+(`[1.0.0,2.0.0)`, `(,3.0.0]`, `3.*`). List the NuGet packages of the open solution's projects,
+check for updates (colored by NuGet / SemVer severity), and upgrade the ones you pick — in place.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/iamr8/dotnet-outdated-gui/build.yml?branch=main&style=flat-square&label=build)](https://github.com/iamr8/dotnet-outdated-gui/actions/workflows/build.yml)
 [![CodeQL](https://img.shields.io/github/actions/workflow/status/iamr8/dotnet-outdated-gui/codeql.yml?branch=main&style=flat-square&label=codeql)](https://github.com/iamr8/dotnet-outdated-gui/actions/workflows/codeql.yml)
@@ -15,6 +17,10 @@ NuGet / SemVer severity), and upgrade the ones you pick — in place.
 
 ## Features
 
+- **Central Package Management** — reads and updates the central version in
+  `Directory.Packages.props`, leaving the versionless `<PackageReference>` in each `.csproj` intact.
+- **NuGet version ranges & floating versions** — interval notation (`[1.0.0,2.0.0)`, `(,3.0.0]`,
+  `[1.2.3]`) and floating (`3.*`) are resolved to the concrete current version, not shown as raw brackets.
 - Lists NuGet packages per project / target framework (`ProjectName · netX` section headers).
 - Checks for updates via `dotnet outdated`; the new version is colored by **NuGet / SemVer**
   severity — green = patch, yellow = minor, red = major / pre-release.

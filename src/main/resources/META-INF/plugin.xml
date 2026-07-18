@@ -5,13 +5,20 @@
 
     <description><![CDATA[
         A GUI for the <a href="https://github.com/dotnet-outdated/dotnet-outdated">dotnet-outdated</a>
-        CLI. Lists NuGet packages in the open solution's projects with their current version, and
-        on demand runs <code>dotnet outdated</code> to show available updates in a Rider NuGet-style
-        list — new version colored by upgrade severity (green = patch, yellow = minor,
-        red = major / pre-release). Select packages and upgrade them in place.
-        <br/><br/>
-        Coloring follows NuGet / Semantic Versioning semantics: patch = backwards-compatible
-        fixes, minor = backwards-compatible features, major or pre-release = possible breaking changes.
+        CLI, built for <b>real-world .NET solutions</b>:
+        <ul>
+          <li><b>Central Package Management</b> — reads and updates versions in
+              <code>Directory.Packages.props</code>, not the individual <code>.csproj</code> files.</li>
+          <li><b>NuGet version ranges &amp; floating versions</b> — interval notation like
+              <code>[1.0.0,2.0.0)</code>, <code>(,3.0.0]</code>, <code>[1.2.3]</code> and floating
+              <code>3.*</code> are resolved to the concrete current version instead of choking on the
+              bracket notation.</li>
+        </ul>
+        Lists NuGet packages in the open solution's projects with their current version, and on
+        demand runs <code>dotnet outdated</code> to show available updates in a Rider NuGet-style
+        list — the new version colored by <b>NuGet / Semantic Versioning</b> severity: green = patch
+        (backwards-compatible fixes), yellow = minor (backwards-compatible features), red = major or
+        pre-release (possible breaking changes). Check the packages you want and upgrade them in place.
         <br/><br/>
         Source &amp; issues: <a href="https://github.com/iamr8/dotnet-outdated-gui">github.com/iamr8/dotnet-outdated-gui</a>
     ]]></description>
