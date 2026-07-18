@@ -10,7 +10,7 @@ plugins {
 
 group = "com.github.iamr8"
 // Single source of truth for the plugin version (also consumed by CI / releases).
-version = file("version.txt").readText().trim()
+version = file("VERSION").readText().trim()
 
 repositories {
     mavenCentral()

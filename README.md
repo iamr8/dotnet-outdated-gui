@@ -10,11 +10,8 @@ upgrade them in place.
 
 - JetBrains Rider 2026.1 (build 261).
 - .NET SDK on `PATH`.
-- The `dotnet-outdated` global tool:
-
-  ```bash
-  dotnet tool install --global dotnet-outdated-tool
-  ```
+- The [`dotnet-outdated`](https://github.com/dotnet-outdated/dotnet-outdated) CLI — see its
+  [installation instructions](https://github.com/dotnet-outdated/dotnet-outdated#installation).
 
 ## Using it
 

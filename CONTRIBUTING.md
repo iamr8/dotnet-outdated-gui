@@ -7,8 +7,8 @@ Thanks for your interest in **dotnet outdated GUI**! Contributions are welcome.
 - JetBrains Rider **2026.1** (build 261) installed at `/Applications/Rider.app` (the build
   compiles against the local install).
 - A JDK capable of `--release 21` (the repo builds on JDK 22; JDK 21 also works).
-- The `dotnet-outdated` global tool for manual testing:
-  `dotnet tool install --global dotnet-outdated-tool`.
+- The [`dotnet-outdated`](https://github.com/dotnet-outdated/dotnet-outdated) CLI for manual
+  testing — see its [installation instructions](https://github.com/dotnet-outdated/dotnet-outdated#installation).
 
 ## Build & test
 

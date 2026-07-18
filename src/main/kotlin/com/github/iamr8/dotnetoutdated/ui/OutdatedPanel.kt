@@ -89,15 +89,14 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         val html = """
             <html><div style='text-align:center; padding:24px;'>
               <p style='font-size:13px;'>The <b>dotnet-outdated</b> CLI is required to use this tool.</p>
-              <p>Install it, then press <b>Reload</b> or <b>Check for Updates</b>:</p>
-              <p><code>dotnet tool install --global dotnet-outdated-tool</code></p>
-              <p><a href="$REPO_URL">$REPO_URL</a></p>
+              <p>Install it (see the <a href="$INSTALL_URL">installation instructions</a>),
+                 then press <b>Reload</b> or <b>Check for Updates</b>.</p>
             </div></html>
         """.trimIndent()
         val pane = JEditorPane("text/html", html).apply {
             isEditable = false
             isOpaque = false
-            addHyperlinkListener { e -> if (e.eventType == HyperlinkEvent.EventType.ACTIVATED) BrowserUtil.browse(REPO_URL) }
+            addHyperlinkListener { e -> if (e.eventType == HyperlinkEvent.EventType.ACTIVATED) BrowserUtil.browse(INSTALL_URL) }
         }
         return JPanel(GridBagLayout()).apply { add(pane) }
     }
@@ -547,7 +546,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         private val MAX_PARALLEL = (Runtime.getRuntime().availableProcessors() - 1).coerceIn(2, 8)
         private const val CARD_TABLE = "table"
         private const val CARD_CLI = "cli"
-        private const val REPO_URL = "https://github.com/dotnet-outdated/dotnet-outdated"
+        private const val INSTALL_URL = "https://github.com/dotnet-outdated/dotnet-outdated#installation"
     }
 
     /** A single thing to scan: a project (or the base dir), with a display label and CLI path. */

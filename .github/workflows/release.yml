@@ -1,13 +1,13 @@
 name: Release
 
 # Release a version deliberately — not on every push to main.
-#  - Manual: provide a version (bumps version.txt, commits, tags v<version>).
-#  - Or: push a tag v* to release the current version.txt.
+#  - Manual: provide a version (bumps VERSION, commits, tags v<version>).
+#  - Or: push a tag v* to release the current VERSION.
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release, e.g. 0.2.0 (blank = use current version.txt)"
+        description: "Version to release, e.g. 0.2.0 (blank = use current VERSION)"
         required: false
         type: string
   push:
@@ -43,9 +43,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "${INPUT_VERSION:-}" ]; then
-            printf '%s\n' "$INPUT_VERSION" > version.txt
+            printf '%s\n' "$INPUT_VERSION" > VERSION
           fi
-          VERSION="$(tr -d '[:space:]' < version.txt)"
+          VERSION="$(tr -d '[:space:]' < VERSION)"
           echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$' \
             || { echo "Invalid version: '$VERSION'"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -58,8 +58,8 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet version.txt; then
-            git add version.txt
+          if ! git diff --quiet VERSION; then
+            git add VERSION
             git commit -m "release: v$VERSION"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
