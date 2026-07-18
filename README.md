@@ -35,19 +35,15 @@ From the [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/32989-dotn
 Or grab a `.zip` from [Releases](https://github.com/iamr8/dotnet-outdated-gui/releases) and install via
 **Settings → Plugins → ⚙ → Install Plugin from Disk…**
 
-<!-- JetBrains Marketplace widgets. GitHub strips <script> in READMEs, so these render only on a
-     site that allows JavaScript; on GitHub, use the badges/link above. -->
-<div id="jb-marketplace-card"></div>
-<script src="https://plugins.jetbrains.com/assets/scripts/mp-widget.js"></script>
-<script>
-  MarketplaceWidget.setupMarketplaceWidget('card', 32989, "#jb-marketplace-card");
-</script>
-
-<div id="jb-marketplace-install"></div>
-<script src="https://plugins.jetbrains.com/assets/scripts/mp-widget.js"></script>
-<script>
-  MarketplaceWidget.setupMarketplaceWidget('install', 32989, "#jb-marketplace-install");
-</script>
+> Embedding the JetBrains Marketplace card/install **widgets** (`mp-widget.js`) requires a page that
+> runs JavaScript. GitHub strips `<script>` from READMEs, so they can't render here — use the
+> Marketplace badge/link above on GitHub, and the widgets on your own site:
+>
+> ```html
+> <div id="dog-card"></div>
+> <script src="https://plugins.jetbrains.com/assets/scripts/mp-widget.js"></script>
+> <script>MarketplaceWidget.setupMarketplaceWidget('card', 32989, "#dog-card");</script>
+> ```
 
 ## Requirements
 
