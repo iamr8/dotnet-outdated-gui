@@ -1,10 +1,30 @@
 # dotnet outdated GUI — Rider plugin
 
-Lists **every** NuGet package in the selected scope with its current version, grouped by
-project. **Refresh** runs [`dotnet outdated`](https://github.com/dotnet-outdated/dotnet-outdated)
-(with `-utd`) to fill the **New Version** column — the newer version when one exists, otherwise
-the current version — colored by upgrade severity. Check the outdated packages you want and
-upgrade them in place.
+A JetBrains Rider tool window for the [`dotnet-outdated`](https://github.com/dotnet-outdated/dotnet-outdated)
+CLI: list the NuGet packages of the open solution's projects, check for updates (colored by
+NuGet / SemVer severity), and upgrade the ones you pick — in place.
+
+[![Build](https://img.shields.io/github/actions/workflow/status/iamr8/dotnet-outdated-gui/build.yml?branch=main&style=flat-square&label=build)](https://github.com/iamr8/dotnet-outdated-gui/actions/workflows/build.yml)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/iamr8/dotnet-outdated-gui/codeql.yml?branch=main&style=flat-square&label=codeql)](https://github.com/iamr8/dotnet-outdated-gui/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/iamr8/dotnet-outdated-gui?style=flat-square)](https://github.com/iamr8/dotnet-outdated-gui/releases)
+[![Last commit](https://img.shields.io/github/last-commit/iamr8/dotnet-outdated-gui?style=flat-square)](https://github.com/iamr8/dotnet-outdated-gui/commits/main)
+[![License: MIT](https://img.shields.io/github/license/iamr8/dotnet-outdated-gui?style=flat-square)](LICENSE)
+[![JetBrains Marketplace](https://img.shields.io/jetbrains/plugin/v/com.github.iamr8.dotnetoutdated?style=flat-square&label=marketplace)](https://plugins.jetbrains.com/plugin/com.github.iamr8.dotnetoutdated)
+[![Downloads](https://img.shields.io/jetbrains/plugin/d/com.github.iamr8.dotnetoutdated?style=flat-square&label=downloads)](https://plugins.jetbrains.com/plugin/com.github.iamr8.dotnetoutdated)
+
+<!-- The two JetBrains Marketplace badges activate once the plugin is published; if they render
+     empty, replace `com.github.iamr8.dotnetoutdated` with the numeric Marketplace plugin id. -->
+
+## Features
+
+- Lists NuGet packages per project / target framework (`ProjectName · netX` section headers).
+- Checks for updates via `dotnet outdated`; the new version is colored by **NuGet / SemVer**
+  severity — green = patch, yellow = minor, red = major / pre-release.
+- Per-row **checkboxes** (multi-select + <kbd>Space</kbd>) to pick packages, then upgrade in place.
+- **Speed search** — start typing to filter by package / project name.
+- **Scope** picker over the open solution's projects; parallel per-project scans; handles `.shproj`.
+- **Settings** exposing every `dotnet outdated` argument (Settings | Tools | dotnet outdated GUI).
+- Editor banner on `.csproj` / `Directory.Packages.props`; opt-in error reporting.
 
 ## Requirements
 
