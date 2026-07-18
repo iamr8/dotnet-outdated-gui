@@ -46,7 +46,8 @@ intellijPlatform {
 
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "261"
+            // 243 = Rider 2024.3, the oldest release on JBR 21 (our Java-21 bytecode needs it).
+            sinceBuild = "243"
             // No upper bound: stay compatible with future IDE builds (Marketplace-friendly).
             untilBuild = provider { null }
         }
@@ -57,11 +58,14 @@ intellijPlatform {
         token = providers.environmentVariable("PUBLISH_TOKEN")
     }
 
-    // `verifyPlugin` (IntelliJ Plugin Verifier) checks binary compatibility with these IDEs.
-    // Pin to released builds — `recommended()` can resolve unreleased EAPs (no until-build bound).
+    // `verifyPlugin` (IntelliJ Plugin Verifier) checks binary compatibility across the range —
+    // the floor (2024.3), a mid build, and the latest — so older-Rider support stays honest.
     pluginVerification {
         ides {
-            ide(IntelliJPlatformType.Rider, "2026.1.4")
+            // useInstaller = false: Rider is verified from the non-installer distribution.
+            create(IntelliJPlatformType.Rider, "2024.3.6") { useInstaller = false }
+            create(IntelliJPlatformType.Rider, "2025.2.4") { useInstaller = false }
+            create(IntelliJPlatformType.Rider, "2026.1.4") { useInstaller = false }
         }
     }
 }
@@ -72,7 +76,7 @@ kotlin {
         // Emit real Java default methods instead of Kotlin delegating overrides, so implementing
         // platform interfaces (e.g. ToolWindowFactory) doesn't generate usages of their
         // deprecated/experimental default methods (Plugin Verifier warnings).
-        freeCompilerArgs.add("-Xjvm-default=all")
+        freeCompilerArgs.add("-jvm-default=all")
     }
 }
 
