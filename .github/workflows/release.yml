@@ -1,8 +1,9 @@
 name: Release
 
 # Publishing happens from the `release` branch only. Merge a PR (with the VERSION bump in it)
-# into `release`; if VERSION is higher than the last released tag, this tags, creates a GitHub
-# release, and publishes to the JetBrains Marketplace. main only builds/verifies (see build.yml).
+# into `release`; if VERSION is higher than the last released tag, the `deploy` job runs as a
+# GitHub Deployment to the `marketplace` environment — it tags, creates a GitHub Release, and
+# publishes to the JetBrains Marketplace. main only builds/verifies (see build.yml).
 on:
   push:
     branches: [release]
@@ -10,13 +11,15 @@ on:
 
 permissions:
   contents: write
+  deployments: write
 
 jobs:
-  release:
+  # Decide whether this VERSION is a new release (higher than the last v* tag). No deployment here.
+  gate:
     runs-on: ubuntu-latest
-    env:
-      PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
-      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+    outputs:
+      version: ${{ steps.gate.outputs.version }}
+      release: ${{ steps.gate.outputs.release }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -46,25 +49,37 @@ jobs:
             echo "release=true" >> "$GITHUB_OUTPUT"
           fi
 
+  # The deployment: tag + GitHub Release + Marketplace publish, tracked under the `marketplace`
+  # environment (see it in the repo's Environments tab; add required reviewers there to gate publishing).
+  deploy:
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: marketplace
+      url: https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui
+    env:
+      PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      VERSION: ${{ needs.gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
       - name: Set up JDK 21
-        if: steps.gate.outputs.release == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Set up Gradle
-        if: steps.gate.outputs.release == 'true'
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build plugin
-        if: steps.gate.outputs.release == 'true'
         run: ./gradlew buildPlugin -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
 
       - name: Tag
-        if: steps.gate.outputs.release == 'true'
-        env:
-          VERSION: ${{ steps.gate.outputs.version }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -75,16 +90,14 @@ jobs:
           fi
 
       - name: Create GitHub release
-        if: steps.gate.outputs.release == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: v${{ steps.gate.outputs.version }}
-          name: v${{ steps.gate.outputs.version }}
+          tag_name: v${{ needs.gate.outputs.version }}
+          name: v${{ needs.gate.outputs.version }}
           generate_release_notes: true
           files: build/distributions/*.zip
 
       - name: Publish to JetBrains Marketplace
         # Requires PUBLISH_TOKEN (set after the first manual Marketplace upload + approval).
-        if: steps.gate.outputs.release == 'true' && env.PUBLISH_TOKEN != ''
-        continue-on-error: true
+        if: env.PUBLISH_TOKEN != ''
         run: ./gradlew publishPlugin -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
