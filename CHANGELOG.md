@@ -6,12 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- Upgrade no longer passes scan/source flags (notably `-ifs`/`--ignore-failed-sources`) to
-  `dotnet outdated -u` — those are forwarded to a nested restore that rejects them and failed
-  every upgrade. Upgrade now sends only version-policy + timeout flags.
+## [0.1.2] - 2026-07-18
+
+### Changed
+- Rewrote the plugin/Marketplace description to lead with Central Package Management and NuGet
+  version-range/floating handling, and to summarize the list/severity/multi-select/search features.
+
+## [0.1.1] - 2026-07-18
 
 ### Added
+- Support for older Rider builds — compatible with Rider 2024.3 (build 243) and newer.
 - Opt-in error reporting to Sentry (only when the user clicks "Report" in the IDE error dialog);
   uses an isolated client that doesn't touch the IDE's own error handling.
 
@@ -21,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Color the entire new-version value by severity (no longer per-character portion).
 - Per-row checkboxes (multi-select + Space to toggle) to choose packages to update; grayed
   project headers; type-to-search (speed search) by package/project name.
+
+### Fixed
+- Upgrade no longer passes scan/source flags (notably `-ifs`/`--ignore-failed-sources`) to
+  `dotnet outdated -u` — those are forwarded to a nested restore that rejects them and failed
+  every upgrade. Upgrade now sends only version-policy + timeout flags.
 
 ## [0.1.0] - 2026-07-17
 
@@ -37,5 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editor banner suggesting the tool when a `.csproj`/`Directory.Packages.props` file is opened.
 - Errors routed to the IDE error reporter.
 
-[Unreleased]: https://github.com/iamr8/dotnet-outdated-gui/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/iamr8/dotnet-outdated-gui/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/iamr8/dotnet-outdated-gui/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/iamr8/dotnet-outdated-gui/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/iamr8/dotnet-outdated-gui/releases/tag/v0.1.0
