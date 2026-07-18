@@ -4,23 +4,32 @@
     <vendor url="https://github.com/iamr8" email="arash.shabbeh@gmail.com">iamr8</vendor>
 
     <description><![CDATA[
-        A GUI for the <a href="https://github.com/dotnet-outdated/dotnet-outdated">dotnet-outdated</a>
-        CLI, built for <b>real-world .NET solutions</b>:
+        <p>Keep a solution's NuGet packages up to date without leaving Rider. <b>dotnet outdated GUI</b>
+        wraps the <a href="https://github.com/dotnet-outdated/dotnet-outdated">dotnet-outdated</a> CLI in a
+        tool window: list every package, check for updates on demand, and upgrade the ones you choose — in place.</p>
+
+        <p>It handles the parts of real-world .NET solutions that trip other tools up:</p>
         <ul>
-          <li><b>Central Package Management</b> — reads and updates versions in
-              <code>Directory.Packages.props</code>, not the individual <code>.csproj</code> files.</li>
-          <li><b>NuGet version ranges &amp; floating versions</b> — interval notation like
-              <code>[1.0.0,2.0.0)</code>, <code>(,3.0.0]</code>, <code>[1.2.3]</code> and floating
-              <code>3.*</code> are resolved to the concrete current version instead of choking on the
-              bracket notation.</li>
+          <li><b>Central Package Management</b> — updates the central <code>&lt;PackageVersion&gt;</code> in
+              <code>Directory.Packages.props</code> and leaves the versionless
+              <code>&lt;PackageReference&gt;</code> in each project untouched.</li>
+          <li><b>NuGet version ranges &amp; floating versions</b> — interval and floating notation
+              (<code>[1.0.0,2.0.0)</code>, <code>(,3.0.0]</code>, <code>3.*</code>) resolve to the concrete
+              current version instead of showing raw brackets.</li>
+          <li><b>Severity at a glance</b> — each available update is colored by NuGet / Semantic Versioning:
+              green for patch, yellow for minor, red for major or pre-release.</li>
         </ul>
-        Lists NuGet packages in the open solution's projects with their current version, and on
-        demand runs <code>dotnet outdated</code> to show available updates in a Rider NuGet-style
-        list — the new version colored by <b>NuGet / Semantic Versioning</b> severity: green = patch
-        (backwards-compatible fixes), yellow = minor (backwards-compatible features), red = major or
-        pre-release (possible breaking changes). Check the packages you want and upgrade them in place.
-        <br/><br/>
-        Source &amp; issues: <a href="https://github.com/iamr8/dotnet-outdated-gui">github.com/iamr8/dotnet-outdated-gui</a>
+
+        <p>Packages are grouped by project and target framework. Pick the ones you want (checkboxes, or
+        multi-select + <b>Space</b>), type to search, and upgrade in place. Every <code>dotnet outdated</code>
+        argument — pre-release, version lock, transitive dependencies, filters, timeouts — is available under
+        <b>Settings &rarr; Tools &rarr; dotnet outdated GUI</b>.</p>
+
+        <p>Complements Rider's built-in NuGet window with a fast, CLI-driven, solution-wide view of what's
+        outdated. Requires the <a href="https://github.com/dotnet-outdated/dotnet-outdated#installation">dotnet-outdated</a>
+        global tool; no known conflicts.</p>
+
+        <p>Source &amp; issues: <a href="https://github.com/iamr8/dotnet-outdated-gui">github.com/iamr8/dotnet-outdated-gui</a></p>
     ]]></description>
 
     <change-notes><![CDATA[
