@@ -76,7 +76,9 @@ kotlin {
         // Emit real Java default methods instead of Kotlin delegating overrides, so implementing
         // platform interfaces (e.g. ToolWindowFactory) doesn't generate usages of their
         // deprecated/experimental default methods (Plugin Verifier warnings).
-        freeCompilerArgs.add("-jvm-default=all")
+        // Stable flag replacing -Xjvm-default=all; `all` maps to `no-compatibility`
+        // (the flag accepts only disable|enable|no-compatibility).
+        freeCompilerArgs.add("-jvm-default=no-compatibility")
     }
 }
 
