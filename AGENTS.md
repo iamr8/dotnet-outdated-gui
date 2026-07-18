@@ -55,6 +55,11 @@ root:    PluginErrorReportSubmitter + SentryReporter (opt-in error reporting)
 
 ### Key behaviors
 
+- **Core value prop (lead with this in all user-facing copy)**: works with **Central Package
+  Management** (`Directory.Packages.props` — upgrades the central `<PackageVersion>`, leaves the
+  versionless `<PackageReference>` intact) and **NuGet version ranges / floating versions**
+  (`[1.0.0,2.0.0)`, `(,3.0.0]`, `3.*` — surfaced as the CLI's resolved concrete version, not raw
+  brackets). Both are handled by the underlying CLIs; we surface + upgrade correctly.
 - **Two phases**: Phase 1 = `dotnet list package` (offline, fast, gated by the "List all packages"
   option — OFF by default because it's heavy). Phase 2 = `dotnet outdated` ("Check for Updates").
 - **Scan scope**: whole solution in one call when all projects selected; per-project (parallel,
