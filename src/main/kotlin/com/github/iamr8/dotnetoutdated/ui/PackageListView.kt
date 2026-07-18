@@ -30,10 +30,44 @@ fun SeverityColor.toJBColor(): Color = when (this) {
     SeverityColor.NONE -> JBColor.foreground()
 }
 
-private sealed class ListEntry
-private class HeaderEntry(val title: String) : ListEntry()
-private class PackageEntry(val dep: DepRow, val target: String) : ListEntry() {
+internal sealed class ListEntry
+internal class HeaderEntry(val title: String) : ListEntry()
+internal class PackageEntry(val dep: DepRow, val target: String) : ListEntry() {
     var checked: Boolean = false
+}
+
+/** Pure list logic (no Swing) — unit-tested; [PackageListView] is the thin Swing wiring. */
+internal object PackageListLogic {
+
+    /** Section headers + package rows in display order: sections sorted, deps outdated-first by name. */
+    fun buildEntries(sections: List<PackageSection>): List<ListEntry> {
+        val entries = ArrayList<ListEntry>()
+        for (section in sections.sortedWith(compareBy({ it.projectName.lowercase() }, { it.framework }))) {
+            entries.add(HeaderEntry("${section.projectName}  ·  ${section.framework}"))
+            for (dep in section.deps.sortedWith(compareByDescending<DepRow> { it.outdated }.thenBy { it.name.lowercase() })) {
+                entries.add(PackageEntry(dep, section.upgradeTarget))
+            }
+        }
+        return entries
+    }
+
+    fun hasChecked(entries: List<ListEntry>): Boolean =
+        entries.any { it is PackageEntry && it.checked && it.dep.outdated }
+
+    /** Checked outdated packages grouped by upgrade-target path, names deduped. */
+    fun checkedByTarget(entries: List<ListEntry>): Map<String, List<String>> {
+        val result = LinkedHashMap<String, MutableList<String>>()
+        for (entry in entries) {
+            if (entry is PackageEntry && entry.checked && entry.dep.outdated) {
+                result.getOrPut(entry.target) { mutableListOf() }.add(entry.dep.name)
+            }
+        }
+        return result.mapValues { it.value.distinct() }
+    }
+
+    /** Next checkbox state for a selection: if any is unchecked, check all; else uncheck all. */
+    fun nextToggleState(selectedOutdated: List<PackageEntry>): Boolean =
+        !selectedOutdated.all { it.checked }
 }
 
 /**
@@ -85,28 +119,13 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
 
     fun setData(sections: List<PackageSection>) {
         model.clear()
-        sections
-            .sortedWith(compareBy({ it.projectName.lowercase() }, { it.framework }))
-            .forEach { section ->
-                model.addElement(HeaderEntry("${section.projectName}  ·  ${section.framework}"))
-                section.deps
-                    .sortedWith(compareByDescending<DepRow> { it.outdated }.thenBy { it.name.lowercase() })
-                    .forEach { model.addElement(PackageEntry(it, section.upgradeTarget)) }
-            }
+        PackageListLogic.buildEntries(sections).forEach { model.addElement(it) }
     }
 
-    fun hasChecked(): Boolean = eachPackage().any { it.checked && it.dep.outdated }
+    fun hasChecked(): Boolean = PackageListLogic.hasChecked(entries())
 
     /** Checked outdated packages grouped by the project path to upgrade against. */
-    fun checkedByTarget(): Map<String, List<String>> {
-        val result = LinkedHashMap<String, MutableList<String>>()
-        for (entry in eachPackage()) {
-            if (entry.checked && entry.dep.outdated) {
-                result.getOrPut(entry.target) { mutableListOf() }.add(entry.dep.name)
-            }
-        }
-        return result.mapValues { it.value.distinct() }
-    }
+    fun checkedByTarget(): Map<String, List<String>> = PackageListLogic.checkedByTarget(entries())
 
     private fun toggleCheckedForSelection() {
         val targets = ArrayList<PackageEntry>()
@@ -115,15 +134,13 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
             if (entry.dep.outdated) targets.add(entry)
         }
         if (targets.isEmpty()) return
-        val newState = !targets.all { it.checked } // if any unchecked, check all; else uncheck
+        val newState = PackageListLogic.nextToggleState(targets)
         targets.forEach { it.checked = newState }
         list.repaint()
         onSelectionChanged()
     }
 
-    private fun eachPackage(): Sequence<PackageEntry> = sequence {
-        for (i in 0 until model.size()) (model.getElementAt(i) as? PackageEntry)?.let { yield(it) }
-    }
+    private fun entries(): List<ListEntry> = (0 until model.size()).map { model.getElementAt(it) }
 
     /** Headers aren't actionable; keep them out of the selection. */
     private fun dropHeaderSelections() {
