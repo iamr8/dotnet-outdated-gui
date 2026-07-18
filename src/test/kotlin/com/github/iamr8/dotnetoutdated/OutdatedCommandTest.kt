@@ -6,6 +6,7 @@ import com.github.iamr8.dotnetoutdated.cli.OutdatedOptions
 import com.github.iamr8.dotnetoutdated.cli.PreRelease
 import com.github.iamr8.dotnetoutdated.cli.VersionLock
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OutdatedCommandTest {
@@ -95,7 +96,7 @@ class OutdatedCommandTest {
     fun upgradeWithDefaultsAddsIncludePerPackage() {
         val cmd = OutdatedCommand.upgrade("dotnet", "/repo/App.csproj", listOf("Foo", "Bar"), OutdatedOptions())
         assertEquals(
-            listOf("dotnet", "outdated", "/repo/App.csproj", "-u", "-ifs", "-it", "300", "-inc", "Foo", "-inc", "Bar"),
+            listOf("dotnet", "outdated", "/repo/App.csproj", "-u", "-it", "300", "-inc", "Foo", "-inc", "Bar"),
             cmd,
         )
     }
@@ -105,8 +106,26 @@ class OutdatedCommandTest {
         val opts = OutdatedOptions(versionLock = VersionLock.Minor, excludeFilters = mutableListOf("Preview"))
         val cmd = OutdatedCommand.upgrade("dotnet", "/repo/App.csproj", listOf("Foo"), opts)
         assertEquals(
-            listOf("dotnet", "outdated", "/repo/App.csproj", "-u", "-vl", "Minor", "-ifs", "-it", "300", "-inc", "Foo", "-exc", "Preview"),
+            listOf("dotnet", "outdated", "/repo/App.csproj", "-u", "-vl", "Minor", "-it", "300", "-inc", "Foo", "-exc", "Preview"),
             cmd,
         )
+    }
+
+    @Test
+    fun upgradeNeverPassesIgnoreFailedSourcesOrAnalysisFlags() {
+        // -ifs (and other scan/source flags) break `dotnet outdated -u` (forwarded to a nested
+        // restore that rejects them). Upgrade must never include them, even when enabled.
+        val opts = OutdatedOptions(
+            ignoreFailedSources = true,
+            includeAutoReferences = true,
+            transitive = true,
+            noRestore = true,
+            recursive = true,
+            runtime = "linux-x64",
+            credLogLevel = CredLogLevel.Error,
+        )
+        val cmd = OutdatedCommand.upgrade("dotnet", "/repo/App.csproj", listOf("Foo"), opts)
+        val banned = listOf("-ifs", "-i", "-t", "-td", "-n", "-r", "-fba", "-rt", "-ncll", "-utd")
+        assertTrue("upgrade must not contain scan/source flags: $cmd", banned.none { it in cmd })
     }
 }

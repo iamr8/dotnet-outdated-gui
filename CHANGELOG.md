@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Upgrade no longer passes scan/source flags (notably `-ifs`/`--ignore-failed-sources`) to
+  `dotnet outdated -u` — those are forwarded to a nested restore that rejects them and failed
+  every upgrade. Upgrade now sends only version-policy + timeout flags.
+
 ### Added
 - Opt-in error reporting to Sentry (only when the user clicks "Report" in the IDE error dialog);
   uses an isolated client that doesn't touch the IDE's own error handling.
