@@ -20,8 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   certificates or third-party network access. Sentry, its dependency, and the baked-in DSN are gone.
 - Unresolvable package versions get a dedicated message pointing at the project file /
   `Directory.Packages.props` instead of a wall of MSBuild output.
-- The plugin verifier now checks the current Rider build only (older builds in the compatibility
-  range are no longer verified on every run).
 
 ## [0.1.2] - 2026-07-18
 

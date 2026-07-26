@@ -55,12 +55,13 @@ intellijPlatform {
         token = providers.environmentVariable("PUBLISH_TOKEN")
     }
 
-    // `verifyPlugin` (IntelliJ Plugin Verifier) checks binary compatibility against the current
-    // Rider only. Older builds inside the declared since-build range are not verified by choice —
-    // each extra IDE is a multi-GB download per run.
+    // `verifyPlugin` (IntelliJ Plugin Verifier) checks binary compatibility across the range —
+    // the floor (2024.3), a mid build, and the latest — so older-Rider support stays honest.
     pluginVerification {
         ides {
             // useInstaller = false: Rider is verified from the non-installer distribution.
+            create(IntelliJPlatformType.Rider, "2024.3.6") { useInstaller = false }
+            create(IntelliJPlatformType.Rider, "2025.2.4") { useInstaller = false }
             create(IntelliJPlatformType.Rider, "2026.1.4") { useInstaller = false }
         }
     }
