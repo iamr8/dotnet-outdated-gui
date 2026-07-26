@@ -8,6 +8,9 @@ plugins {
     id("org.jetbrains.intellij.platform") version "2.11.0"
 }
 
+// Latest released Rider. Verified on every PR (see `pluginVerification` below).
+val CURRENT_RIDER = "2026.2"
+
 group = "com.github.iamr8"
 // Single source of truth for the plugin version (also consumed by CI / releases).
 version = file("VERSION").readText().trim()
@@ -60,15 +63,24 @@ intellijPlatform {
         token = providers.environmentVariable("PUBLISH_TOKEN")
     }
 
-    // `verifyPlugin` (IntelliJ Plugin Verifier) checks binary compatibility across the range —
-    // the floor (2024.3), a mid build, and the latest — so older-Rider support stays honest.
+    // `verifyPlugin` (IntelliJ Plugin Verifier). Two scopes, because every extra IDE is a
+    // multi-GB download:
+    //   -PverifierIdes=current -> the current Rider only. Used by the PR check in build.yml, so
+    //                             API breakage surfaces on the PR instead of a weekly run.
+    //   (default)              -> the whole supported range: the floor (2024.3), a mid build and
+    //                             both current releases. This is what keeps since-build 243 honest,
+    //                             and is what compatibility.yml runs.
     pluginVerification {
         ides {
             // useInstaller = false: Rider is verified from the non-installer distribution.
-            create(IntelliJPlatformType.Rider, "2024.3.6") { useInstaller = false }
-            create(IntelliJPlatformType.Rider, "2025.2.4") { useInstaller = false }
-            create(IntelliJPlatformType.Rider, "2026.1.4") { useInstaller = false }
-            create(IntelliJPlatformType.Rider, "2026.2") { useInstaller = false }
+            if (providers.gradleProperty("verifierIdes").orNull == "current") {
+                create(IntelliJPlatformType.Rider, CURRENT_RIDER) { useInstaller = false }
+            } else {
+                create(IntelliJPlatformType.Rider, "2024.3.6") { useInstaller = false }
+                create(IntelliJPlatformType.Rider, "2025.2.4") { useInstaller = false }
+                create(IntelliJPlatformType.Rider, "2026.1.4") { useInstaller = false }
+                create(IntelliJPlatformType.Rider, CURRENT_RIDER) { useInstaller = false }
+            }
         }
     }
 }
