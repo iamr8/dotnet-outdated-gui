@@ -23,8 +23,6 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Run Plugin Verifier
-        env:
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: ./gradlew verifyPlugin -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
 
       - name: Upload verifier report

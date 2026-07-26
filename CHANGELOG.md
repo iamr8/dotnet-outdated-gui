@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-26
+
+### Fixed
+- Failures coming from your solution — an unresolvable package version (`NU1102`), an unrestored
+  project, a missing CLI — no longer raise the IDE's "Report error" dialog. They are shown as a
+  notification with a short, actionable message and a **Copy Details** action for the full CLI
+  output, and are logged as warnings instead of errors.
+
+### Changed
+- Error reporting now goes through the JetBrains Marketplace Exception Analyzer (the platform's
+  own reporter) instead of Sentry, so reporting a plugin exception no longer prompts about
+  certificates or third-party network access. Sentry, its dependency, and the baked-in DSN are gone.
+- Unresolvable package versions get a dedicated message pointing at the project file /
+  `Directory.Packages.props` instead of a wall of MSBuild output.
+- The plugin verifier now checks the current Rider build only (older builds in the compatibility
+  range are no longer verified on every run).
+
 ## [0.1.2] - 2026-07-18
 
 ### Changed

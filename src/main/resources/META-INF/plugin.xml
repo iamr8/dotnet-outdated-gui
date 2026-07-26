@@ -40,8 +40,16 @@
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <errorHandler implementation="com.github.iamr8.dotnetoutdated.PluginErrorReportSubmitter"/>
+        <!--
+          Opt in to the JetBrains Marketplace Exception Analyzer: when the user chooses to report a
+          plugin exception, it is delivered to the plugin's "Exceptions" tab on the Marketplace.
+          Platform-provided (since 2023.3) — no third-party service, no extra dependency.
+        -->
+        <errorHandler implementation="com.intellij.diagnostic.JetBrainsMarketplaceErrorReportSubmitter"/>
         <editorNotificationProvider implementation="com.github.iamr8.dotnetoutdated.ui.DotnetProjectNotificationProvider"/>
+
+        <!-- Balloons for dotnet CLI / user-project failures (not plugin bugs). -->
+        <notificationGroup id="dotnet outdated GUI" displayType="BALLOON"/>
 
         <!--
           Marketplace Plugin Advertiser: Rider's dotnet dependency collector matches a project's
