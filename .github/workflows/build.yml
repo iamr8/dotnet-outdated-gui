@@ -29,6 +29,19 @@ jobs:
         # -Dorg.gradle.java.home overrides the machine-specific value in gradle.properties.
         run: ./gradlew test verifyPluginProjectConfiguration verifyPluginStructure buildPlugin -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
 
+      # Compatibility check at PR time, against the current Rider only (one IDE download).
+      # The full supported range (2024.3.6 / 2025.2.4 / 2026.1.4 / current) runs in compatibility.yml.
+      - name: Verify plugin compatibility (current Rider)
+        run: ./gradlew verifyPlugin -PverifierIdes=current -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
+
+      - name: Upload verifier report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: plugin-verifier-report
+          path: build/reports/pluginVerifier/**
+          if-no-files-found: warn
+
       - name: Publish test report
         uses: dorny/test-reporter@v3
         if: always() # report even when tests fail

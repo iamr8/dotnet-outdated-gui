@@ -92,12 +92,19 @@ ui/      OutdatedToolWindowFactory, OutdatedPanel (toolbar + phases), PackageLis
 ## Testing policy
 
 Every functional change needs a test where practical. Pure logic (command builders, parsing,
-severity, solution parsing, options round-trip) is unit-tested (JUnit4). UI is verified via
-`runIde` / a local install. Run `./gradlew test` before committing.
+severity, solution parsing, options round-trip) is unit-tested (JUnit4).
+
+**Verification happens in CI, not locally.** Don't run Gradle locally to prove a change works —
+open the PR and let its checks do it. `build.yml` runs, on every PR: `test`,
+`verifyPluginProjectConfiguration`, `verifyPluginStructure`, `buildPlugin`, and the **Plugin
+Verifier against the current Rider** (`verifyPlugin -PverifierIdes=current`). A red check is the
+signal to fix; a green one is the evidence. The full IDE range still runs in `compatibility.yml`.
+UI behavior that no check can cover is confirmed by installing the built zip in real Rider.
 
 ## CI / release
 
-- Workflows: `build.yml` (test + verify + buildPlugin + artifact), `codeql.yml` (security;
+- Workflows: `build.yml` (test + verify + buildPlugin + **Plugin Verifier on the current Rider** +
+  artifact), `codeql.yml` (security;
   CodeQL needs a real compile — `clean --no-daemon --no-build-cache`), `compatibility.yml`
   (weekly plugin verifier, pinned to released Riders across the range — 2024.3.6 / 2025.2.4 /
   2026.1.4 / 2026.2; `recommended()` can resolve 404 EAPs),
