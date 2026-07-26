@@ -38,19 +38,16 @@ rm -rf "$HOME/Library/Application Support/JetBrains/Rider2026.1/plugins/dotnet-o
 unzip -q build/distributions/dotnet-outdated-rider-0.1.0.zip -d "$HOME/Library/Application Support/JetBrains/Rider2026.1/plugins"
 ```
 
-To bake the Sentry DSN into a local build, `export SENTRY_DSN=<dsn>` before building.
-
 ## Architecture
 
 ```
 cli/     OutdatedCommand / ListPackagesCommand (pure arg builders), DotnetOutdatedRunner (process),
-         SolutionModel (.sln/.slnx parse), DotnetLocator
+         SolutionModel (.sln/.slnx parse), DotnetLocator, CliFailures (CLI output -> user message)
 model/   OutdatedReport / ListPackagesReport (Gson DTOs), Severity (severity -> color)
 parse/   Gson JSON -> model
 settings/ OutdatedOptions (persisted), OutdatedOptionsService, OutdatedConfigurable (Settings page)
 ui/      OutdatedToolWindowFactory, OutdatedPanel (toolbar + phases), PackageListView (grouped list),
          DotnetProjectNotificationProvider (editor banner)
-root:    PluginErrorReportSubmitter + SentryReporter (opt-in error reporting)
 ```
 
 ### Key behaviors
@@ -70,7 +67,19 @@ root:    PluginErrorReportSubmitter + SentryReporter (opt-in error reporting)
   checkbox + `Name · Current` (left) and the new version (right, whole-value colored by severity).
   Severity follows NuGet/SemVer: green=patch, yellow=minor, red=major/pre-release.
 - **Checkboxes** (only outdated rows checkable) + Space toggles selection; **speed search** by name.
-- Errors go to the IDE error reporter; "Report" sends to Sentry (opt-in only).
+- **Error routing** (two distinct classes, never mixed):
+  - *User/environment failures* (missing CLI, unrestored project, `NU1102` version that doesn't
+    exist, non-zero dotnet exit) → notification balloon via the `dotnet outdated GUI`
+    `<notificationGroup>` + `LOG.warn`. The short message comes from `CliFailures.describe`;
+    the raw CLI output is behind the balloon's **Copy Details** action. Never `LOG.error` —
+    that opens the IDE fatal-error dialog and would fill the Marketplace Exceptions tab with
+    other people's broken solutions.
+  - *Plugin bugs* (unexpected `Throwable` in a background task) → `LOG.error`, i.e. the IDE error
+    reporter, which submits to the **JetBrains Marketplace Exception Analyzer**
+    (`<errorHandler implementation="com.intellij.diagnostic.JetBrainsMarketplaceErrorReportSubmitter"/>`,
+    platform-provided since 2023.3). Reports land on the plugin's *Exceptions* tab
+    (`plugins.jetbrains.com/plugin/32989/edit/exception-analyzer`) and only for Marketplace-installed
+    builds — the Report action is absent/inert in `runIde` and local-zip installs.
 
 ### Gotchas
 
@@ -90,7 +99,8 @@ severity, solution parsing, options round-trip) is unit-tested (JUnit4). UI is v
 
 - Workflows: `build.yml` (test + verify + buildPlugin + artifact), `codeql.yml` (security;
   CodeQL needs a real compile — `clean --no-daemon --no-build-cache`), `compatibility.yml`
-  (weekly plugin verifier, pinned to a released Rider — `recommended()` can resolve 404 EAPs),
+  (weekly plugin verifier, pinned to released Riders across the range — 2024.3.6 / 2025.2.4 /
+  2026.1.4 / 2026.2; `recommended()` can resolve 404 EAPs),
   `release.yml`, plus Dependabot. Actions are pinned to latest majors.
 - **Release model**: branch-based.
   - `main` = development; `build.yml` only builds + verifies. Never releases.
@@ -99,10 +109,8 @@ severity, solution parsing, options round-trip) is unit-tested (JUnit4). UI is v
     tags `v<VERSION>`, builds, creates a GitHub Release, and publishes to the Marketplace
     (when `PUBLISH_TOKEN` is set). If `VERSION` is identical to or lower than the last tag, it
     **skips** (no tag/release/publish). Keep `main` and `release` in sync after a release.
-- **Secrets**: `SENTRY_DSN` (set; runtime error DSN), `PUBLISH_TOKEN` (add after the first manual
-  Marketplace upload + approval).
-- Sentry DSN is injected at build time from `SENTRY_DSN` into `sentry.properties` — **never
-  committed**. The DSN is a write-only client key.
+- **Secrets**: `PUBLISH_TOKEN` (Marketplace publish), `SYNC_PAT` (release→main sync PR).
+  No error-reporting secret: exceptions go to the Marketplace Exception Analyzer, which needs none.
 
 ## Conventions & rules
 

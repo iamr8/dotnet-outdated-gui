@@ -61,7 +61,6 @@ jobs:
       url: https://plugins.jetbrains.com/plugin/${{ vars.PLUGIN_ID }}-${{ github.event.repository.name }}
     env:
       PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
-      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       VERSION: ${{ needs.gate.outputs.version }}
     steps:
       - uses: actions/checkout@v7

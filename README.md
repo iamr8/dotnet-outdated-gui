@@ -32,7 +32,8 @@ check for updates (colored by NuGet / SemVer severity), and upgrade the ones you
 - **Speed search** — start typing to filter by package / project name.
 - **Scope** picker over the open solution's projects; parallel per-project scans; handles `.shproj`.
 - **Settings** exposing every `dotnet outdated` argument (Settings | Tools | dotnet outdated GUI).
-- Editor banner on `.csproj` / `Directory.Packages.props`; opt-in error reporting.
+- Editor banner on `.csproj` / `Directory.Packages.props`; opt-in exception reporting straight to
+  the JetBrains Marketplace (no third-party service).
 
 ## Install
 
@@ -76,8 +77,11 @@ Or grab a `.zip` from [Releases](https://github.com/iamr8/dotnet-outdated-gui/re
    them all), then **Update Selected** — runs `dotnet outdated -u -inc <pkg> …` and re-scans.
    Up-to-date packages can't be checked. Start typing to **speed-search** by package/project name.
 
-Errors (missing tool, unrestored project, non-zero exit) are sent to the **IDE error reporter**
-(selectable / copyable, with a "Copy Error Report to Clipboard" action), not the status bar.
+Problems in your solution (missing tool, unrestored project, a package version that doesn't exist,
+non-zero exit) are shown as a **notification** with a short, actionable message and a **Copy Details**
+action carrying the full CLI output — they are not treated as plugin crashes. Genuine plugin
+exceptions go to the IDE's error reporter, which submits them (only if you choose to) to this
+plugin's **Exceptions** page on the JetBrains Marketplace.
 
 New-version colors follow **NuGet / Semantic Versioning** semantics (the CLI legend):
 **red** = major update or pre-release (possible breaking changes), **yellow** = minor
@@ -119,7 +123,8 @@ Install the built zip via **Settings → Plugins → ⚙ → Install Plugin from
 ## Layout
 
 ```
-cli/    OutdatedCommand (pure arg builders), DotnetOutdatedRunner (process), SolutionTargets, DotnetLocator
+cli/    OutdatedCommand (pure arg builders), DotnetOutdatedRunner (process), SolutionTargets, DotnetLocator,
+        CliFailures (CLI output → short user-facing message)
 model/  OutdatedReport (JSON schema), Severity (severity → color legend)
 parse/  OutdatedReportParser (JSON → model)
 ui/     tool window factory, panel (toolbar + background scan/upgrade), tree table, row model

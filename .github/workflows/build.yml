@@ -27,13 +27,10 @@ jobs:
 
       - name: Test, verify & build
         # -Dorg.gradle.java.home overrides the machine-specific value in gradle.properties.
-        # SENTRY_DSN is injected into sentry.properties at build time (see build.gradle.kts).
-        env:
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: ./gradlew test verifyPluginProjectConfiguration verifyPluginStructure buildPlugin -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
 
       - name: Publish test report
-        uses: dorny/test-reporter@v2
+        uses: dorny/test-reporter@v3
         if: always() # report even when tests fail
         with:
           name: Test results
