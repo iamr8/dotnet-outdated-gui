@@ -23,6 +23,11 @@ dependencies {
     intellijPlatform {
         // Locally: build against the installed Rider (no big download, exact API match).
         // Elsewhere (CI, no local install): download the matching Rider SDK.
+        // NOTE: a local Rider 2026.2 (build 262) install cannot be resolved by this plugin version —
+        // it fails with "Could not find a field for name … ModuleDescriptor". Fixing that needs
+        // IntelliJ Platform Gradle Plugin >= 2.12, which requires Gradle 9 and a JDK 25 toolchain
+        // (build 262 ships Java-25 bytecode). Tracked as a follow-up toolchain upgrade; until then
+        // build against the downloaded 2026.1.4 SDK.
         if (file("/Applications/Rider.app").exists()) {
             local("/Applications/Rider.app")
         } else {
@@ -63,6 +68,7 @@ intellijPlatform {
             create(IntelliJPlatformType.Rider, "2024.3.6") { useInstaller = false }
             create(IntelliJPlatformType.Rider, "2025.2.4") { useInstaller = false }
             create(IntelliJPlatformType.Rider, "2026.1.4") { useInstaller = false }
+            create(IntelliJPlatformType.Rider, "2026.2") { useInstaller = false }
         }
     }
 }

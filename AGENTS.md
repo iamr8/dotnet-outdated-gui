@@ -100,7 +100,7 @@ severity, solution parsing, options round-trip) is unit-tested (JUnit4). UI is v
 - Workflows: `build.yml` (test + verify + buildPlugin + artifact), `codeql.yml` (security;
   CodeQL needs a real compile — `clean --no-daemon --no-build-cache`), `compatibility.yml`
   (weekly plugin verifier, pinned to released Riders across the range — 2024.3.6 / 2025.2.4 /
-  2026.1.4; `recommended()` can resolve 404 EAPs),
+  2026.1.4 / 2026.2; `recommended()` can resolve 404 EAPs),
   `release.yml`, plus Dependabot. Actions are pinned to latest majors.
 - **Release model**: branch-based.
   - `main` = development; `build.yml` only builds + verifies. Never releases.
