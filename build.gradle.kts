@@ -34,7 +34,10 @@ dependencies {
         if (file("/Applications/Rider.app").exists()) {
             local("/Applications/Rider.app")
         } else {
-            rider("2026.1.4")
+            // useInstaller = false: IPGP doesn't support Rider *installer* distributions and warns
+            // on every build otherwise ("Using Rider … with `useInstaller = true` is currently not
+            // supported"). Same flag the pluginVerification IDEs use.
+            rider("2026.1.4", useInstaller = false)
         }
         testFramework(TestFrameworkType.Platform)
     }
