@@ -34,9 +34,6 @@ dependencies {
     // Bundled with the plugin; used by the pure JSON parser.
     implementation("com.google.code.gson:gson:2.14.0")
 
-    // Bundled; used only by the error reporter to send opt-in crash reports.
-    implementation("io.sentry:sentry:7.22.6")
-
     testImplementation("junit:junit:4.13.2")
 }
 
@@ -58,13 +55,12 @@ intellijPlatform {
         token = providers.environmentVariable("PUBLISH_TOKEN")
     }
 
-    // `verifyPlugin` (IntelliJ Plugin Verifier) checks binary compatibility across the range —
-    // the floor (2024.3), a mid build, and the latest — so older-Rider support stays honest.
+    // `verifyPlugin` (IntelliJ Plugin Verifier) checks binary compatibility against the current
+    // Rider only. Older builds inside the declared since-build range are not verified by choice —
+    // each extra IDE is a multi-GB download per run.
     pluginVerification {
         ides {
             // useInstaller = false: Rider is verified from the non-installer distribution.
-            create(IntelliJPlatformType.Rider, "2024.3.6") { useInstaller = false }
-            create(IntelliJPlatformType.Rider, "2025.2.4") { useInstaller = false }
             create(IntelliJPlatformType.Rider, "2026.1.4") { useInstaller = false }
         }
     }
@@ -89,15 +85,4 @@ java {
 
 tasks.test {
     useJUnit()
-}
-
-// Bake the Sentry DSN into sentry.properties at build time from the SENTRY_DSN env var
-// (a GitHub Actions secret in CI). Nothing sentry-related is committed; a blank value
-// disables reporting. The DSN is a write-only client key, not a build credential.
-tasks.processResources {
-    val sentryDsn = providers.environmentVariable("SENTRY_DSN").orElse("")
-    inputs.property("sentryDsn", sentryDsn)
-    filesMatching("sentry.properties") {
-        expand("sentryDsn" to sentryDsn.get())
-    }
 }

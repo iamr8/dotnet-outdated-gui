@@ -1,5 +1,6 @@
 package com.github.iamr8.dotnetoutdated.ui
 
+import com.github.iamr8.dotnetoutdated.cli.CliFailures
 import com.github.iamr8.dotnetoutdated.cli.DotnetOutdatedRunner
 import com.github.iamr8.dotnetoutdated.cli.Solution
 import com.github.iamr8.dotnetoutdated.cli.SolutionModel
@@ -9,6 +10,10 @@ import com.github.iamr8.dotnetoutdated.settings.OutdatedConfigurable
 import com.github.iamr8.dotnetoutdated.settings.OutdatedOptionsService
 import com.intellij.icons.AllIcons
 import com.intellij.ide.BrowserUtil
+import com.intellij.notification.NotificationAction
+import com.intellij.notification.NotificationGroupManager
+import com.intellij.notification.NotificationType
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionToolbar
@@ -24,6 +29,7 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
@@ -31,6 +37,7 @@ import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.CardLayout
 import java.awt.GridBagLayout
+import java.awt.datatransfer.StringSelection
 import java.io.File
 import javax.swing.BoxLayout
 import javax.swing.JComponent
@@ -176,23 +183,23 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         else perProjectUnits()
     }
 
-    /** Runs [exec] over each unit in parallel, collecting rows and per-unit failure messages. */
+    /** Runs [exec] over each unit in parallel, collecting rows and per-unit failures. */
     private fun runUnits(
         units: List<ScanUnit>,
         indicator: ProgressIndicator,
-        exec: (ScanUnit) -> Pair<List<PackageSection>?, String?>,
-    ): Pair<List<PackageSection>, List<String>> {
+        exec: (ScanUnit) -> Pair<List<PackageSection>?, ScanFailure?>,
+    ): Pair<List<PackageSection>, List<ScanFailure>> {
         if (units.isEmpty()) return emptyList<PackageSection>() to emptyList()
         if (units.size == 1) {
             indicator.isIndeterminate = true
             indicator.text = "Analyzing ${units[0].label}…"
             indicator.text2 = "Running dotnet on ${File(units[0].path).name}"
             val (rows, error) = exec(units[0])
-            return (rows ?: emptyList()) to (error?.let { listOf("${units[0].label}: $it") } ?: emptyList())
+            return (rows ?: emptyList()) to listOfNotNull(error)
         }
 
         val rows = java.util.Collections.synchronizedList(mutableListOf<PackageSection>())
-        val failures = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val failures = java.util.Collections.synchronizedList(mutableListOf<ScanFailure>())
         val done = java.util.concurrent.atomic.AtomicInteger(0)
         indicator.isIndeterminate = false
         indicator.text = "Analyzing 0 / ${units.size} projects…"
@@ -202,7 +209,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
                 pool.submit {
                     indicator.text2 = "Analyzing ${unit.label}"
                     val (unitRows, error) = exec(unit)
-                    if (unitRows != null) rows.addAll(unitRows) else if (error != null) failures.add("${unit.label}: $error")
+                    if (unitRows != null) rows.addAll(unitRows) else if (error != null) failures.add(error)
                     val completed = done.incrementAndGet()
                     indicator.fraction = completed.toDouble() / units.size
                     indicator.text = "Analyzed $completed / ${units.size} projects…"
@@ -234,20 +241,51 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         status.text = text.ifBlank { " " }
     }
 
-    /** Route errors to the IDE error reporter (selectable/copyable) rather than the status bar. */
-    private fun reportError(context: String, detail: String? = null, throwable: Throwable? = null) {
-        val message = buildString {
-            append("dotnet outdated GUI: ").append(context)
-            if (!detail.isNullOrBlank()) append('\n').append(detail)
+    /**
+     * A dotnet / user-project failure (missing CLI, unrestored project, a package version that
+     * doesn't exist, …) — *not* a plugin bug. Surfaced as a balloon with the full CLI output one
+     * click away, plus `LOG.warn` for idea.log.
+     *
+     * Deliberately never `LOG.error`: that opens the IDE's fatal-error dialog and would push other
+     * people's broken solutions into the plugin's Marketplace Exception Analyzer.
+     */
+    private fun notifyFailure(
+        context: String,
+        failures: List<ScanFailure>,
+        type: NotificationType = NotificationType.WARNING,
+        updateStatus: Boolean = true,
+    ) {
+        if (failures.isEmpty()) return
+        val details = failures.joinToString("\n\n") { it.details }
+        LOG.warn("dotnet outdated GUI: $context\n$details")
+
+        val shown = failures.take(MAX_SHOWN_FAILURES)
+        val body = buildString {
+            shown.forEach { append(StringUtil.escapeXmlEntities(it.line)).append("<br/>") }
+            val more = failures.size - shown.size
+            if (more > 0) append("…and $more more project(s).")
         }
-        if (throwable != null) LOG.error(message, throwable) else LOG.error(message)
+        onEdt {
+            if (updateStatus) setStatus("$context — see the notification for details.")
+            notificationGroup()
+                .createNotification(context, body, type)
+                .addAction(
+                    NotificationAction.createSimpleExpiring("Copy Details") {
+                        CopyPasteManager.getInstance().setContents(StringSelection("$context\n\n$details"))
+                    },
+                )
+                .notify(project)
+        }
+    }
+
+    /** An unexpected plugin-side exception: this one *is* worth reporting (IDE error reporter). */
+    private fun reportInternalError(context: String, throwable: Throwable) {
+        LOG.error("dotnet outdated GUI: $context", throwable)
         onEdt { setStatus("$context — see the IDE error report for details.") }
     }
 
-    /** Logs non-fatal detail to the error reporter without hijacking the (informative) status line. */
-    private fun logQuietly(context: String, detail: String) {
-        LOG.error("dotnet outdated GUI: $context\n$detail")
-    }
+    private fun notificationGroup() =
+        NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP)
 
     /** Blocking CLI presence check (call off the EDT); caches the positive result. */
     private fun ensureCli(): Boolean {
@@ -308,15 +346,15 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         toolbar.updateActionsAsync()
         setStatus("Finding packages…")
 
-        val exec: (ScanUnit) -> Pair<List<PackageSection>?, String?> = { unit ->
+        val exec: (ScanUnit) -> Pair<List<PackageSection>?, ScanFailure?> = { unit ->
             val result = runner.listPackages(unit.path, basePath(), optionsService.options)
-            if (result.json.isBlank()) null to describeFailure(result.stderr, result.stdout)
+            if (result.json.isBlank()) null to failureOf(unit, result.stderr, result.stdout)
             else OutdatedRows.buildFromListing(ListPackagesParser.parse(result.json), unit.path) to null
         }
 
         ProgressManager.getInstance().run(object : Task.Backgroundable(project, "dotnet outdated GUI: listing NuGet packages (dotnet list package)", true) {
             private var rows: List<PackageSection> = emptyList()
-            private var failures: List<String> = emptyList()
+            private var failures: List<ScanFailure> = emptyList()
 
             override fun run(indicator: ProgressIndicator) {
                 if (!ensureCli()) return
@@ -333,7 +371,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
             override fun onThrowable(error: Throwable) = onEdt {
                 busy = false
-                reportError("Listing packages failed", throwable = error)
+                reportInternalError("Listing packages failed", error)
                 toolbar.updateActionsAsync()
             }
         })
@@ -346,18 +384,18 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         toolbar.updateActionsAsync()
         setStatus("Checking for updates…")
 
-        val exec: (ScanUnit) -> Pair<List<PackageSection>?, String?> = { unit ->
+        val exec: (ScanUnit) -> Pair<List<PackageSection>?, ScanFailure?> = { unit ->
             val result = runner.scan(unit.path, basePath(), optionsService.options)
             when {
-                result.timedOut -> null to "timed out"
-                result.exitCode != 0 && result.json.isBlank() -> null to describeFailure(result.stderr, result.stdout)
+                result.timedOut -> null to failureOf(unit, result.stderr, result.stdout, summary = "timed out")
+                result.exitCode != 0 && result.json.isBlank() -> null to failureOf(unit, result.stderr, result.stdout)
                 else -> OutdatedRows.build(OutdatedReportParser.parse(result.json), unit.path) to null
             }
         }
 
         ProgressManager.getInstance().run(object : Task.Backgroundable(project, "dotnet outdated GUI: checking for package updates (dotnet outdated)", true) {
             private var rows: List<PackageSection> = emptyList()
-            private var failures: List<String> = emptyList()
+            private var failures: List<ScanFailure> = emptyList()
 
             override fun run(indicator: ProgressIndicator) {
                 if (!ensureCli()) return
@@ -374,7 +412,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
             override fun onThrowable(error: Throwable) = onEdt {
                 busy = false
-                reportError("Update check failed", throwable = error)
+                reportInternalError("Update check failed", error)
                 toolbar.updateActionsAsync()
             }
         })
@@ -388,8 +426,8 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     private fun runScoped(
         indicator: ProgressIndicator,
         toleratesUnsupported: Boolean,
-        exec: (ScanUnit) -> Pair<List<PackageSection>?, String?>,
-    ): Pair<List<PackageSection>, List<String>> {
+        exec: (ScanUnit) -> Pair<List<PackageSection>?, ScanFailure?>,
+    ): Pair<List<PackageSection>, List<ScanFailure>> {
         val primary = primaryUnits(toleratesUnsupported)
         val (rows, failures) = runUnits(primary, indicator, exec)
         val wasWholeSolution = primary.size == 1 && primary.first().path == solution?.solutionPath
@@ -402,7 +440,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     private fun finishScan(
         rows: List<PackageSection>,
-        failures: List<String>,
+        failures: List<ScanFailure>,
         checked: Boolean,
         hardFailContext: String,
         skipContext: String,
@@ -412,8 +450,10 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         skippedProjects = failures.size
         updatesChecked = checked
         render()
-        if (rows.isEmpty() && failures.isNotEmpty()) reportError(hardFailContext, failures.joinToString("\n"))
-        else if (failures.isNotEmpty()) logQuietly(skipContext, failures.joinToString("\n"))
+        // Nothing came back at all -> tell the user why. Partial results already say "(n skipped)"
+        // in the status line, so that case gets a quiet, non-status-hijacking balloon.
+        if (rows.isEmpty() && failures.isNotEmpty()) notifyFailure(hardFailContext, failures)
+        else if (failures.isNotEmpty()) notifyFailure(skipContext, failures, NotificationType.INFORMATION, updateStatus = false)
         toolbar.updateActionsAsync()
     }
 
@@ -440,15 +480,16 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         setStatus("Upgrading $packageCount package(s)…")
 
         ProgressManager.getInstance().run(object : Task.Backgroundable(project, "dotnet outdated GUI: upgrading selected packages (dotnet outdated -u)", true) {
-            private val failures = mutableListOf<String>()
+            private val failures = mutableListOf<ScanFailure>()
 
             override fun run(indicator: ProgressIndicator) {
                 for ((targetPath, names) in byTarget) {
                     indicator.checkCanceled()
-                    indicator.text = File(targetPath).name
+                    val unit = ScanUnit(File(targetPath).name, targetPath)
+                    indicator.text = unit.label
                     val result = runner.upgrade(targetPath, names, basePath(), optionsService.options)
-                    if (result.timedOut) failures += "${File(targetPath).name}: timed out"
-                    else if (result.exitCode != 0) failures += "${File(targetPath).name}: ${describeFailure(result.stderr, result.stdout)}"
+                    if (result.timedOut) failures += failureOf(unit, result.stderr, result.stdout, summary = "timed out")
+                    else if (result.exitCode != 0) failures += failureOf(unit, result.stderr, result.stdout)
                 }
             }
 
@@ -456,7 +497,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
                 busy = false
                 toolbar.updateActionsAsync()
                 if (failures.isNotEmpty()) {
-                    reportError("Some upgrades failed", failures.joinToString("\n"))
+                    notifyFailure("Some upgrades failed", failures)
                 } else {
                     setStatus("Upgrade complete. Re-checking…")
                 }
@@ -465,23 +506,21 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
             override fun onThrowable(error: Throwable) = onEdt {
                 busy = false
-                reportError("Upgrade failed", throwable = error)
+                reportInternalError("Upgrade failed", error)
                 toolbar.updateActionsAsync()
             }
         })
     }
 
-    private fun describeFailure(stderr: String, stdout: String): String {
-        val combined = (stderr + "\n" + stdout).lowercase()
-        return when {
-            "no executable found matching command" in combined || "is not a dotnet command" in combined ->
-                "dotnet-outdated tool not found. Install: dotnet tool install -g dotnet-outdated-tool"
-            "command not found" in combined || combined.isBlank() ->
-                "Could not run dotnet. Ensure the .NET SDK is installed and on PATH."
-            "no assets" in combined || "run a restore" in combined || "project.assets.json" in combined ->
-                "The project isn't restored. Run 'dotnet restore' (or build) and try again."
-            else -> stderr.ifBlank { stdout }.ifBlank { "dotnet exited with a non-zero status." }
-        }
+    /** Builds a [ScanFailure]: short summary for the UI, raw CLI output kept for "Copy Details". */
+    private fun failureOf(
+        unit: ScanUnit,
+        stderr: String,
+        stdout: String,
+        summary: String = CliFailures.describe(stderr, stdout),
+    ): ScanFailure {
+        val raw = listOf(stderr, stdout).filter { it.isNotBlank() }.joinToString("\n").trim()
+        return ScanFailure(unit.label, summary, raw)
     }
 
     private fun onEdt(block: () -> Unit) =
@@ -547,8 +586,21 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         private const val CARD_TABLE = "table"
         private const val CARD_CLI = "cli"
         private const val INSTALL_URL = "https://github.com/dotnet-outdated/dotnet-outdated#installation"
+        /** Must match the <notificationGroup id="…"> in plugin.xml. */
+        private const val NOTIFICATION_GROUP = "dotnet outdated GUI"
+        /** Balloons stay readable; the rest is in "Copy Details" and idea.log. */
+        private const val MAX_SHOWN_FAILURES = 3
     }
 
     /** A single thing to scan: a project (or the base dir), with a display label and CLI path. */
     private data class ScanUnit(val label: String, val path: String)
+
+    /**
+     * A unit that couldn't be scanned: [summary] is the short, actionable line shown to the user,
+     * [raw] the untouched CLI output kept for "Copy Details" / idea.log.
+     */
+    private data class ScanFailure(val label: String, val summary: String, val raw: String) {
+        val line: String get() = "$label: $summary"
+        val details: String get() = if (raw.isBlank()) line else "$line\n$raw"
+    }
 }
