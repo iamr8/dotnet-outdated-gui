@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Much faster update check on large solutions.** The check now runs `dotnet outdated` once over
+  the whole solution (as the CLI does), unless you narrow the **Scope** picker to a subset. Before,
+  if any single project failed to restore (e.g. an `NU1102` version that doesn't exist — common
+  mid-migration), the plugin silently re-ran every project one at a time, turning a ~15s scan into
+  a minutes-long crawl. A whole-solution failure now surfaces the CLI's own error (which names the
+  broken project) instead.
+
 ### Added
 - Toolbar **Select All / Deselect All** button — checks every outdated package in one click, or
   clears them all. The label and icon follow the current state.
