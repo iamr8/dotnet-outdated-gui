@@ -67,9 +67,9 @@ jobs:
 
   # Every successful build on main is published as an EAP pre-release (GitHub only, NOT the
   # Marketplace) so the team can download the zip and install it in Rider for testing. The plugin
-  # version is date + build number (0.0.0-eap.<yyyyMMdd>.<run>); its 0.0.0 head keeps it below any
-  # real release in the IDE's version comparison. The release notes name the target version (the
-  # VERSION file) and list the PRs since the last stable tag.
+  # version is <VERSION>-eap.<yyyyMMdd>.<run> (VERSION = main's target, ahead of the last release),
+  # so the EAP is higher than the released build and installs over it in Rider. The release notes
+  # name the target version and list the PRs since the last stable tag.
   eap:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -94,9 +94,12 @@ jobs:
         id: ver
         run: |
           date="$(date -u +%Y%m%d)"
-          eap="0.0.0-eap.${date}.${{ github.run_number }}"
-          tag="eap-${date}.${{ github.run_number }}"
           target="$(cat VERSION)"
+          # Build off the target version (main's VERSION, ahead of the last release) so the EAP is
+          # higher than the released build and actually installs over it in Rider — and its version
+          # reads as the target, e.g. 0.1.4-eap.20260829.104.
+          eap="${target}-eap.${date}.${{ github.run_number }}"
+          tag="eap-${date}.${{ github.run_number }}"
           echo "eap=$eap"       >> "$GITHUB_OUTPUT"
           echo "tag=$tag"       >> "$GITHUB_OUTPUT"
           echo "target=$target" >> "$GITHUB_OUTPUT"
@@ -139,7 +142,7 @@ jobs:
             **Early-access (EAP) dev build — target version `${{ steps.ver.outputs.target }}`.**
             Not published to the JetBrains Marketplace. For local testing only.
 
-            Plugin version: `${{ steps.ver.outputs.eap }}` (date + build; its `0.0.0` head keeps it below any real release).
+            Plugin version: `${{ steps.ver.outputs.eap }}` (target version + date + build; higher than the last release, so it installs over it). Uninstall it before installing a Marketplace release.
 
             ### Install
             Download the `.zip` below, then in Rider:

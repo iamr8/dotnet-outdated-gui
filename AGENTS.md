@@ -110,12 +110,14 @@ UI behavior that no check can cover is confirmed by installing the built zip in 
   2026.1.4 / 2026.2; `recommended()` can resolve 404 EAPs),
   `release.yml`, plus Dependabot. Actions are pinned to latest majors.
 - **EAP dev builds**: every successful `build.yml` run on **`main`** publishes an **EAP GitHub
-  pre-release** (the `eap` job) — NOT the Marketplace. The plugin version is date + build number
-  (`0.0.0-eap.<yyyyMMdd>.<run>`, overriding `VERSION` via `-PpluginVersion`); its `0.0.0` head
-  keeps it below any real release in the IDE's version comparison (the `-eap` suffix is not what
-  demotes it). The tag is `eap-<yyyyMMdd>.<run>`. The release notes name the target
-  version (the `VERSION` file / milestone) and list the PRs merged since the last stable `v*` tag.
-  For local testing: download the zip, install via Settings → Plugins → ⚙ → Install from Disk.
+  pre-release** (the `eap` job) — NOT the Marketplace. The plugin version is
+  `<VERSION>-eap.<yyyyMMdd>.<run>` (`VERSION` = main's target, overriding via `-PpluginVersion`),
+  e.g. `0.1.4-eap.20260829.104`. Because `main`'s `VERSION` is ahead of the last release, the EAP
+  sorts *above* the released build, so it installs over it in Rider and reads as the target version.
+  The tag is `eap-<yyyyMMdd>.<run>`. The release notes name the target version (the `VERSION` file /
+  milestone) and list the PRs merged since the last stable `v*` tag. For local testing: download the
+  zip, install via Settings → Plugins → ⚙ → Install from Disk; uninstall it before installing a
+  Marketplace release.
 - **Release model**: branch-based.
   - `main` = development; `build.yml` builds + verifies + publishes an EAP pre-release (above).
     It never publishes to the Marketplace.
