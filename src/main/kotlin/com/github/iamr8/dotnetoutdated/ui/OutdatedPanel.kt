@@ -136,6 +136,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
             add(CheckForUpdatesAction())
             add(ScopeAction())
             addSeparator()
+            add(SelectAllAction())
             add(UpdateAction())
             addSeparator()
             add(OptionsAction())
@@ -563,6 +564,18 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         override fun actionPerformed(e: AnActionEvent) {
             showScopePicker(e.inputEvent?.component as? JComponent ?: toolbar.component)
         }
+    }
+
+    private inner class SelectAllAction : AnAction() {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+        override fun update(e: AnActionEvent) {
+            val allChecked = listView.allOutdatedChecked()
+            e.presentation.text = if (allChecked) "Deselect All" else "Select All"
+            e.presentation.description = "Toggle the checkbox on every outdated package"
+            e.presentation.icon = if (allChecked) AllIcons.Actions.Unselectall else AllIcons.Actions.Selectall
+            e.presentation.isEnabled = !busy && listView.hasOutdated()
+        }
+        override fun actionPerformed(e: AnActionEvent) = listView.toggleSelectAll()
     }
 
     private inner class UpdateAction : AnAction("Update Selected", "Upgrade the checked packages", AllIcons.Actions.Download) {

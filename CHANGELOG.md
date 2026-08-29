@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Toolbar **Select All / Deselect All** button — checks every outdated package in one click, or
+  clears them all. The label and icon follow the current state.
+- A **checkbox on each project header** — toggles every outdated package under that project. It
+  shows a three-state view (all / partial / none) and stays in sync with the toolbar button and
+  the individual package checkboxes.
+
 ## [0.1.3] - 2026-07-26
 
 ### Fixed
