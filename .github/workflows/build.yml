@@ -110,14 +110,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           last="$(git tag -l 'v*' | sort -V | tail -1)"
+          query="is:pr is:merged base:main"
           if [ -n "$last" ]; then
             since="$(git log -1 --format=%cI "$last")"
-            list="$(gh pr list --state merged --base main --search "merged:>$since" --json number,title --jq '.[] | "- #\(.number) \(.title)"')"
+            query="$query merged:>$since"
             echo "base=$last" >> "$GITHUB_OUTPUT"
           else
-            list="$(gh pr list --state merged --base main --json number,title --jq '.[] | "- #\(.number) \(.title)"')"
             echo "base=(none)" >> "$GITHUB_OUTPUT"
           fi
+          list="$(gh pr list --search "$query" --json number,title --jq '.[] | "- #\(.number) \(.title)"')"
           [ -z "$list" ] && list="_(no merged PRs found)_"
           {
             echo "list<<PRS_EOF"
