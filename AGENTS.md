@@ -144,6 +144,11 @@ Every PR must be enriched — not just a title:
 - **Assignee** set (normally the author, e.g. `iamr8`).
 - At least one **label**: `bug`, `enhancement`, `documentation`, `ci`, or `dependencies`
   (create a fitting one if none applies).
+- **Milestone** set to the current target version — the next version after the last release
+  (e.g. after `0.1.3`, target `0.1.4`). Ask which version to target when it isn't obvious. The
+  milestone must equal the `VERSION` file (in the PR / on `main`) before merge, and matches the
+  CHANGELOG section (see **Commits**). `main` always carries the *next* target version, so its
+  `VERSION` is ahead of the `release` branch's.
 - **Base branch**: `main` for development; a **release** PR targets the `release` branch and
   includes the `VERSION` bump (see the Release model above).
 - Keep it focused — one concern per PR; record user-facing changes in `CHANGELOG.md` under the
