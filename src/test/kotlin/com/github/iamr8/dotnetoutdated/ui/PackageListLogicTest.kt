@@ -79,6 +79,78 @@ class PackageListLogicTest {
     }
 
     @Test
+    fun outdatedEntriesKeepsOnlyCheckableRows() {
+        val entries = PackageListLogic.buildEntries(
+            listOf(section("P", "net8.0", "/p.csproj", listOf(dep("A"), dep("B", outdated = false)))),
+        )
+        assertEquals(listOf("A"), PackageListLogic.outdatedEntries(entries).map { it.dep.name })
+    }
+
+    @Test
+    fun hasOutdatedTrueOnlyWhenACheckableRowExists() {
+        val none = PackageListLogic.buildEntries(
+            listOf(section("P", "net8.0", "/p.csproj", listOf(dep("A", outdated = false)))),
+        )
+        assertFalse(PackageListLogic.hasOutdated(none))
+
+        val some = PackageListLogic.buildEntries(
+            listOf(section("P", "net8.0", "/p.csproj", listOf(dep("A")))),
+        )
+        assertTrue(PackageListLogic.hasOutdated(some))
+    }
+
+    @Test
+    fun allOutdatedCheckedIgnoresUpToDateRowsAndNeedsAtLeastOne() {
+        val empty = PackageListLogic.buildEntries(
+            listOf(section("P", "net8.0", "/p.csproj", listOf(dep("A", outdated = false)))),
+        )
+        assertFalse(PackageListLogic.allOutdatedChecked(empty)) // no checkable row
+
+        val entries = PackageListLogic.buildEntries(
+            listOf(section("P", "net8.0", "/p.csproj", listOf(dep("A"), dep("B"), dep("Up", outdated = false)))),
+        )
+        assertFalse(PackageListLogic.allOutdatedChecked(entries)) // none checked
+        PackageListLogic.outdatedEntries(entries).forEach { it.checked = true }
+        assertTrue(PackageListLogic.allOutdatedChecked(entries)) // up-to-date row doesn't block
+    }
+
+    @Test
+    fun sectionCheckStateReflectsNonePartialAll() {
+        val entries = PackageListLogic.buildEntries(
+            listOf(section("P", "net8.0", "/p.csproj", listOf(dep("A"), dep("B"), dep("Up", outdated = false)))),
+        )
+        val header = entries.filterIsInstance<HeaderEntry>().single()
+        val outdated = PackageListLogic.outdatedEntries(entries)
+
+        assertEquals(CheckState.NONE, PackageListLogic.sectionCheckState(header))
+        outdated.first().checked = true
+        assertEquals(CheckState.SOME, PackageListLogic.sectionCheckState(header))
+        outdated.forEach { it.checked = true }
+        assertEquals(CheckState.ALL, PackageListLogic.sectionCheckState(header)) // up-to-date row ignored
+    }
+
+    @Test
+    fun sectionWithNoOutdatedIsNoneAndHasNoOutdated() {
+        val entries = PackageListLogic.buildEntries(
+            listOf(section("P", "net8.0", "/p.csproj", listOf(dep("Up", outdated = false)))),
+        )
+        val header = entries.filterIsInstance<HeaderEntry>().single()
+        assertFalse(PackageListLogic.sectionHasOutdated(header))
+        assertEquals(CheckState.NONE, PackageListLogic.sectionCheckState(header))
+    }
+
+    @Test
+    fun headerPackagesShareInstancesWithFlatRows() {
+        val entries = PackageListLogic.buildEntries(
+            listOf(section("P", "net8.0", "/p.csproj", listOf(dep("A")))),
+        )
+        val header = entries.filterIsInstance<HeaderEntry>().single()
+        val row = entries.filterIsInstance<PackageEntry>().single { it.dep.name == "A" }
+        header.packages.first { it.dep.name == "A" }.checked = true
+        assertTrue(row.checked) // toggling via the header mutates the same row object
+    }
+
+    @Test
     fun nextToggleStateChecksWhenAnyUnchecked_elseUnchecks() {
         val entries = PackageListLogic.buildEntries(
             listOf(section("P", "net8.0", "/p.csproj", listOf(dep("A"), dep("B")))),
@@ -87,5 +159,31 @@ class PackageListLogicTest {
         assertTrue(PackageListLogic.nextToggleState(pkgs)) // none checked -> check
         pkgs.forEach { it.checked = true }
         assertFalse(PackageListLogic.nextToggleState(pkgs)) // all checked -> uncheck
+    }
+
+    @Test
+    fun searchTextIsPackageNameForRows() {
+        val entries = PackageListLogic.buildEntries(
+            listOf(section("MyProj", "net8.0", "/p.csproj", listOf(dep("Newtonsoft.Json")))),
+        )
+        val row = entries.filterIsInstance<PackageEntry>().single()
+        assertEquals("Newtonsoft.Json", PackageListLogic.searchText(row))
+    }
+
+    @Test
+    fun searchTextIsSectionTitleForHeaders() {
+        val entries = PackageListLogic.buildEntries(
+            listOf(section("MyProj", "net8.0", "/p.csproj", listOf(dep("A")))),
+        )
+        val header = entries.filterIsInstance<HeaderEntry>().single()
+        // Header title is also what the renderer highlights, so it must match the section label.
+        assertEquals("MyProj  ·  net8.0", header.title)
+        assertEquals("MyProj  ·  net8.0", PackageListLogic.searchText(header))
+    }
+
+    @Test
+    fun searchTextIsEmptyForNull() {
+        // ListSpeedSearch may hand the accessor a null element (e.g. an empty model); must not throw.
+        assertEquals("", PackageListLogic.searchText(null))
     }
 }

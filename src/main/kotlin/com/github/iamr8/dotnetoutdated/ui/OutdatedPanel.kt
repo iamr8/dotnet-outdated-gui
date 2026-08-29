@@ -2,6 +2,8 @@ package com.github.iamr8.dotnetoutdated.ui
 
 import com.github.iamr8.dotnetoutdated.cli.CliFailures
 import com.github.iamr8.dotnetoutdated.cli.DotnetOutdatedRunner
+import com.github.iamr8.dotnetoutdated.cli.ScanPlan
+import com.github.iamr8.dotnetoutdated.cli.ScanUnit
 import com.github.iamr8.dotnetoutdated.cli.Solution
 import com.github.iamr8.dotnetoutdated.cli.SolutionModel
 import com.github.iamr8.dotnetoutdated.parse.ListPackagesParser
@@ -136,6 +138,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
             add(CheckForUpdatesAction())
             add(ScopeAction())
             addSeparator()
+            add(SelectAllAction())
             add(UpdateAction())
             addSeparator()
             add(OptionsAction())
@@ -146,42 +149,6 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     private fun basePath(): String = project.basePath ?: System.getProperty("user.dir")
-
-    /** True when every project in the open solution is included (the default). */
-    private fun allProjectsSelected(): Boolean {
-        val sln = solution ?: return true
-        return sln.projects.isNotEmpty() && includedProjects.size == sln.projects.size
-    }
-
-    /** One call on the whole solution — used when all projects are selected. */
-    private fun solutionUnit(): ScanUnit? =
-        solution?.let { ScanUnit(it.name, it.solutionPath) }
-
-    /** One unit per included project (or the base dir when there is no solution). */
-    private fun perProjectUnits(): List<ScanUnit> {
-        val sln = solution
-        if (sln != null && sln.projects.isNotEmpty()) {
-            return sln.projects.filter { it.name in includedProjects }
-                .ifEmpty { sln.projects }
-                .map { ScanUnit(it.name, it.path) }
-        }
-        val base = basePath()
-        return listOf(ScanUnit(File(base).name, base))
-    }
-
-    /**
-     * Preferred scan units: the whole solution in one call when all projects are selected.
-     * A subset selection is always per-project. For tools that can't load unsupported project
-     * types (e.g. `dotnet list package` chokes on `.shproj`), pass [toleratesUnsupported] = false
-     * to go straight to per-project when the solution has such projects. `dotnet outdated`
-     * tolerates them, so it keeps the fast single whole-solution call.
-     */
-    private fun primaryUnits(toleratesUnsupported: Boolean): List<ScanUnit> {
-        val wholeSolutionOk = allProjectsSelected() &&
-            (toleratesUnsupported || solution?.hasUnsupportedProjects != true)
-        return if (wholeSolutionOk) listOfNotNull(solutionUnit()).ifEmpty { perProjectUnits() }
-        else perProjectUnits()
-    }
 
     /** Runs [exec] over each unit in parallel, collecting rows and per-unit failures. */
     private fun runUnits(
@@ -358,8 +325,9 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
             override fun run(indicator: ProgressIndicator) {
                 if (!ensureCli()) return
-                // dotnet list package can't load .shproj etc. -> per-project when unsupported present.
-                val (r, f) = runScoped(indicator, toleratesUnsupported = false, exec)
+                // dotnet list package can't load .shproj etc. -> per-project when unsupported present;
+                // it also hard-fails on a single unrestored project, so recover the rest per-project.
+                val (r, f) = runScoped(indicator, toleratesUnsupported = false, fallbackToPerProject = true, exec)
                 rows = r; failures = f
             }
 
@@ -400,7 +368,9 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
             override fun run(indicator: ProgressIndicator) {
                 if (!ensureCli()) return
                 // dotnet outdated tolerates .shproj etc. -> keep the fast single whole-solution call.
-                val (r, f) = runScoped(indicator, toleratesUnsupported = true, exec)
+                // No per-project fan-out on failure: it fails fast and names the broken project,
+                // and re-running all projects one-by-one is a minutes-long crawl that fixes nothing.
+                val (r, f) = runScoped(indicator, toleratesUnsupported = true, fallbackToPerProject = false, exec)
                 rows = r; failures = f
             }
 
@@ -419,20 +389,30 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     /**
-     * Runs the primary units (whole solution when all selected); if that yields nothing but
-     * produced failures, falls back to per-project so one broken project (e.g. a `.shproj`
-     * that the dotnet CLI can't load) can't sink the whole solution.
+     * Runs the primary units: the whole solution in one call when all projects are selected (the
+     * default), or one unit per project when the user narrowed the scope in the picker.
+     *
+     * [fallbackToPerProject] controls what happens when the whole-solution call comes back empty
+     * with a failure:
+     *  - Phase 2 (`dotnet outdated`) passes `false`: NO fan-out. The CLI fails fast and names the
+     *    broken project (e.g. an `NU1102` version that doesn't exist); re-running every project
+     *    one-by-one turns a ~15s solution call into a minutes-long crawl without fixing anything —
+     *    the broken projects still fail. The CLI error is surfaced instead; per-project is an
+     *    explicit capability via the scope picker.
+     *  - Phase 1 (`dotnet list package`) passes `true`: it hard-fails on any single unrestored or
+     *    unsupported project, so recover the rest with a per-project fan-out (each call is offline
+     *    and cheap). One broken project shouldn't blank the whole list.
      */
     private fun runScoped(
         indicator: ProgressIndicator,
         toleratesUnsupported: Boolean,
+        fallbackToPerProject: Boolean,
         exec: (ScanUnit) -> Pair<List<PackageSection>?, ScanFailure?>,
     ): Pair<List<PackageSection>, List<ScanFailure>> {
-        val primary = primaryUnits(toleratesUnsupported)
+        val primary = ScanPlan.primaryUnits(solution, includedProjects, basePath(), toleratesUnsupported)
         val (rows, failures) = runUnits(primary, indicator, exec)
-        val wasWholeSolution = primary.size == 1 && primary.first().path == solution?.solutionPath
-        if (rows.isEmpty() && failures.isNotEmpty() && wasWholeSolution) {
-            val fallback = perProjectUnits()
+        if (ScanPlan.shouldFallBackToPerProject(fallbackToPerProject, primary, solution, rows.isEmpty(), failures.isNotEmpty())) {
+            val fallback = ScanPlan.perProjectUnits(solution, includedProjects, basePath())
             if (fallback.isNotEmpty()) return runUnits(fallback, indicator, exec)
         }
         return rows to failures
@@ -565,6 +545,18 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         }
     }
 
+    private inner class SelectAllAction : AnAction() {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+        override fun update(e: AnActionEvent) {
+            val allChecked = listView.allOutdatedChecked()
+            e.presentation.text = if (allChecked) "Deselect All" else "Select All"
+            e.presentation.description = "Toggle the checkbox on every outdated package"
+            e.presentation.icon = if (allChecked) AllIcons.Actions.Unselectall else AllIcons.Actions.Selectall
+            e.presentation.isEnabled = !busy && listView.hasOutdated()
+        }
+        override fun actionPerformed(e: AnActionEvent) = listView.toggleSelectAll()
+    }
+
     private inner class UpdateAction : AnAction("Update Selected", "Upgrade the checked packages", AllIcons.Actions.Download) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
         override fun update(e: AnActionEvent) {
@@ -591,9 +583,6 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         /** Balloons stay readable; the rest is in "Copy Details" and idea.log. */
         private const val MAX_SHOWN_FAILURES = 3
     }
-
-    /** A single thing to scan: a project (or the base dir), with a display label and CLI path. */
-    private data class ScanUnit(val label: String, val path: String)
 
     /**
      * A unit that couldn't be scanned: [summary] is the short, actionable line shown to the user,

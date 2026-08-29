@@ -14,8 +14,8 @@ enum class CredLogLevel { Debug, Verbose, Information, Minimal, Warning, Error }
  * command building is unit-testable and the type can be bound to the options form and persisted
  * directly (a no-arg constructor is synthesized because all parameters have defaults).
  *
- * Defaults differ from the CLI where it makes the plugin safer or matches its list-everything UX:
- *  - [includeUpToDate] = true  (the tree shows all packages, not just outdated ones)
+ * Defaults differ from the CLI where it makes the plugin safer:
+ *  - [includeUpToDate] = false  (off by default — listing every package is heavy on big solutions)
  *  - [ignoreFailedSources] = true  (a single flaky feed shouldn't abort the whole scan)
  *  - [idleTimeoutSeconds] = 300  (CLI default 120 can trip on slow/private feeds)
  */

@@ -92,18 +92,35 @@ ui/      OutdatedToolWindowFactory, OutdatedPanel (toolbar + phases), PackageLis
 ## Testing policy
 
 Every functional change needs a test where practical. Pure logic (command builders, parsing,
-severity, solution parsing, options round-trip) is unit-tested (JUnit4). UI is verified via
-`runIde` / a local install. Run `./gradlew test` before committing.
+severity, solution parsing, options round-trip) is unit-tested (JUnit4).
+
+**Verification happens in CI, not locally.** Don't run Gradle locally to prove a change works —
+open the PR and let its checks do it. `build.yml` runs, on every PR: `test`,
+`verifyPluginProjectConfiguration`, `verifyPluginStructure`, `buildPlugin`, and the **Plugin
+Verifier against the current Rider** (`verifyPlugin -PverifierIdes=current`). A red check is the
+signal to fix; a green one is the evidence. The full IDE range still runs in `compatibility.yml`.
+UI behavior that no check can cover is confirmed by installing the built zip in real Rider.
 
 ## CI / release
 
-- Workflows: `build.yml` (test + verify + buildPlugin + artifact), `codeql.yml` (security;
+- Workflows: `build.yml` (test + verify + buildPlugin + **Plugin Verifier on the current Rider** +
+  artifact), `codeql.yml` (security;
   CodeQL needs a real compile — `clean --no-daemon --no-build-cache`), `compatibility.yml`
   (weekly plugin verifier, pinned to released Riders across the range — 2024.3.6 / 2025.2.4 /
   2026.1.4 / 2026.2; `recommended()` can resolve 404 EAPs),
   `release.yml`, plus Dependabot. Actions are pinned to latest majors.
+- **EAP dev builds**: every successful `build.yml` run on **`main`** publishes an **EAP GitHub
+  pre-release** (the `eap` job) — NOT the Marketplace. The plugin version is
+  `<VERSION>-eap.<yyyyMMdd>.<run>` (`VERSION` = main's target, overriding via `-PpluginVersion`),
+  e.g. `0.1.4-eap.20260829.104`. Because `main`'s `VERSION` is ahead of the last release, the EAP
+  sorts *above* the released build, so it installs over it in Rider and reads as the target version.
+  The tag is `eap-<yyyyMMdd>.<run>`. The release notes name the target version (the `VERSION` file /
+  milestone) and list the PRs merged since the last stable `v*` tag. For local testing: download the
+  zip, install via Settings → Plugins → ⚙ → Install from Disk; uninstall it before installing a
+  Marketplace release.
 - **Release model**: branch-based.
-  - `main` = development; `build.yml` only builds + verifies. Never releases.
+  - `main` = development; `build.yml` builds + verifies + publishes an EAP pre-release (above).
+    It never publishes to the Marketplace.
   - To release: bump `VERSION` **in the same PR**, then merge that PR into the **`release`**
     branch. `release.yml` gates on the version — if `VERSION` > the last released `v*` tag it
     tags `v<VERSION>`, builds, creates a GitHub Release, and publishes to the Marketplace
@@ -115,8 +132,13 @@ severity, solution parsing, options round-trip) is unit-tested (JUnit4). UI is v
 ## Conventions & rules
 
 - **Commits**: Conventional Commits; end the message with
-  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. Update `CHANGELOG.md` under
-  `[Unreleased]` for user-facing changes.
+  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+- **Changelog targets a version, never `[Unreleased]`**: every user-facing change goes in
+  `CHANGELOG.md` under the current in-progress version section — the one matching the `VERSION`
+  file (e.g. `## [0.1.4]`). There is no `[Unreleased]` section. If the top section's version is
+  already released (a `v*` tag exists for it), bump `VERSION` and start a new section for the next
+  version. The top (newest) section carries no date until it ships; add the release date when it is
+  tagged. Keep a bottom link line per version (`[x.y.z]: …/compare/v<prev>...v<this>`).
 - **Git identity** in this repo: `iamr8` / `arash.shabbeh@gmail.com`. Push auth uses gh
   (repo-local credential helper `!gh auth git-credential`), not the machine keychain.
 - **Never commit secrets/tokens.** DSN is injected, tokens live in env / GitHub secrets.
@@ -132,8 +154,13 @@ Every PR must be enriched — not just a title:
 - **Assignee** set (normally the author, e.g. `iamr8`).
 - At least one **label**: `bug`, `enhancement`, `documentation`, `ci`, or `dependencies`
   (create a fitting one if none applies).
+- **Milestone** set to the current target version — the next version after the last release
+  (e.g. after `0.1.3`, target `0.1.4`). Ask which version to target when it isn't obvious. The
+  milestone must equal the `VERSION` file (in the PR / on `main`) before merge, and matches the
+  CHANGELOG section (see **Commits**). `main` always carries the *next* target version, so its
+  `VERSION` is ahead of the `release` branch's.
 - **Base branch**: `main` for development; a **release** PR targets the `release` branch and
   includes the `VERSION` bump (see the Release model above).
-- Keep it focused — one concern per PR; update `CHANGELOG.md` under `[Unreleased]` for
-  user-facing changes.
+- Keep it focused — one concern per PR; record user-facing changes in `CHANGELOG.md` under the
+  current version section (see **Commits** above).
 ```

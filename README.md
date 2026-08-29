@@ -30,7 +30,8 @@ check for updates (colored by NuGet / SemVer severity), and upgrade the ones you
   severity — green = patch, yellow = minor, red = major / pre-release.
 - Per-row **checkboxes** (multi-select + <kbd>Space</kbd>) to pick packages, then upgrade in place.
 - **Speed search** — start typing to filter by package / project name.
-- **Scope** picker over the open solution's projects; parallel per-project scans; handles `.shproj`.
+- Checks the **whole solution in one `dotnet outdated` call** by default (fast); a **Scope** picker
+  narrows it to a subset (parallel per-project scans). Handles `.shproj`.
 - **Settings** exposing every `dotnet outdated` argument (Settings | Tools | dotnet outdated GUI).
 - Editor banner on `.csproj` / `Directory.Packages.props`; opt-in exception reporting straight to
   the JetBrains Marketplace (no third-party service).
@@ -71,8 +72,10 @@ Or grab a `.zip` from [Releases](https://github.com/iamr8/dotnet-outdated-gui/re
 2. **Reload Packages** (↻) — re-list current packages (use after installing/removing a package
    so the list isn't stale).
 3. **Scope** — the current open solution; check/uncheck which of its **loaded projects** to show.
-4. **Check for Updates** — runs `dotnet outdated -utd` to fill **New Version**, and colors the
-   whole outdated row by severity (**red** major/pre-release, **yellow** minor, **green** patch).
+4. **Check for Updates** — runs `dotnet outdated` over the whole solution to fill **New Version**,
+   and colors the whole outdated row by severity (**red** major/pre-release, **yellow** minor,
+   **green** patch). By default only outdated packages are listed; turn on **List all packages** to
+   include up-to-date ones (`-utd`).
 5. **Check** the packages you want (checkbox per row; multi-select rows + <kbd>Space</kbd> toggles
    them all), then **Update Selected** — runs `dotnet outdated -u -inc <pkg> …` and re-scans.
    Up-to-date packages can't be checked. Start typing to **speed-search** by package/project name.
@@ -100,8 +103,8 @@ large solutions; leave it off to work only with outdated packages. Every configu
 - **Discovery** — recurse (`-r`), file-based apps (`-fba`), include/exclude name filters (`-inc`/`-exc`).
 - **Sources & reliability** — no-restore (`-n`), ignore failed sources (`-ifs`), idle timeout (`-it`), runtime (`-rt`), NuGet credential log level (`-ncll`).
 
-Safer-than-CLI defaults: `-utd` on, `-ifs` on, `-it 300` (CLI default 120). Flags are only passed
-when they differ from the CLI default, keeping the invocation minimal.
+Safer-than-CLI defaults: `-ifs` on, `-it 300` (CLI default 120); `-utd` (List all packages) is off.
+Flags are only passed when they differ from the CLI default, keeping the invocation minimal.
 
 > Note: `dotnet outdated`'s `-inc` filter matches package names by *substring*, so upgrading
 > `Microsoft.EntityFrameworkCore` may also upgrade `…EntityFrameworkCore.Design`. The tree

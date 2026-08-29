@@ -6,7 +6,9 @@ import com.intellij.ui.ListSpeedSearch
 import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBList
+import com.intellij.ui.speedSearch.SpeedSearchUtil
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.ThreeStateCheckBox
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Component
@@ -31,10 +33,14 @@ fun SeverityColor.toJBColor(): Color = when (this) {
 }
 
 internal sealed class ListEntry
-internal class HeaderEntry(val title: String) : ListEntry()
+/** A `Project · framework` section header carrying its own package rows for the section toggle. */
+internal class HeaderEntry(val title: String, val packages: List<PackageEntry>) : ListEntry()
 internal class PackageEntry(val dep: DepRow, val target: String) : ListEntry() {
     var checked: Boolean = false
 }
+
+/** Aggregate checkbox state of a section's outdated rows. */
+internal enum class CheckState { NONE, SOME, ALL }
 
 /** Pure list logic (no Swing) — unit-tested; [PackageListView] is the thin Swing wiring. */
 internal object PackageListLogic {
@@ -43,16 +49,30 @@ internal object PackageListLogic {
     fun buildEntries(sections: List<PackageSection>): List<ListEntry> {
         val entries = ArrayList<ListEntry>()
         for (section in sections.sortedWith(compareBy({ it.projectName.lowercase() }, { it.framework }))) {
-            entries.add(HeaderEntry("${section.projectName}  ·  ${section.framework}"))
-            for (dep in section.deps.sortedWith(compareByDescending<DepRow> { it.outdated }.thenBy { it.name.lowercase() })) {
-                entries.add(PackageEntry(dep, section.upgradeTarget))
-            }
+            val packages = section.deps
+                .sortedWith(compareByDescending<DepRow> { it.outdated }.thenBy { it.name.lowercase() })
+                .map { PackageEntry(it, section.upgradeTarget) }
+            entries.add(HeaderEntry("${section.projectName}  ·  ${section.framework}", packages))
+            entries.addAll(packages)
         }
         return entries
     }
 
     fun hasChecked(entries: List<ListEntry>): Boolean =
         entries.any { it is PackageEntry && it.checked && it.dep.outdated }
+
+    /** Checkable (outdated) package rows. */
+    fun outdatedEntries(entries: List<ListEntry>): List<PackageEntry> =
+        entries.filterIsInstance<PackageEntry>().filter { it.dep.outdated }
+
+    /** True when at least one row is checkable. */
+    fun hasOutdated(entries: List<ListEntry>): Boolean = outdatedEntries(entries).isNotEmpty()
+
+    /** True when there is at least one outdated row and all of them are checked. */
+    fun allOutdatedChecked(entries: List<ListEntry>): Boolean {
+        val outdated = outdatedEntries(entries)
+        return outdated.isNotEmpty() && outdated.all { it.checked }
+    }
 
     /** Checked outdated packages grouped by upgrade-target path, names deduped. */
     fun checkedByTarget(entries: List<ListEntry>): Map<String, List<String>> {
@@ -68,6 +88,32 @@ internal object PackageListLogic {
     /** Next checkbox state for a selection: if any is unchecked, check all; else uncheck all. */
     fun nextToggleState(selectedOutdated: List<PackageEntry>): Boolean =
         !selectedOutdated.all { it.checked }
+
+    /** Aggregate state of a header's outdated rows: NONE, SOME (partial), or ALL. */
+    fun sectionCheckState(header: HeaderEntry): CheckState {
+        val outdated = header.packages.filter { it.dep.outdated }
+        if (outdated.isEmpty()) return CheckState.NONE
+        val checked = outdated.count { it.checked }
+        return when (checked) {
+            0 -> CheckState.NONE
+            outdated.size -> CheckState.ALL
+            else -> CheckState.SOME
+        }
+    }
+
+    /** True when the header has at least one checkable (outdated) row. */
+    fun sectionHasOutdated(header: HeaderEntry): Boolean = header.packages.any { it.dep.outdated }
+
+    /**
+     * Text a list entry is matched against by speed search: the package name for a row, the section
+     * title for a header, empty otherwise. This is also the text whose matched characters the
+     * renderer highlights.
+     */
+    fun searchText(entry: ListEntry?): String = when (entry) {
+        is PackageEntry -> entry.dep.name
+        is HeaderEntry -> entry.title
+        else -> ""
+    }
 }
 
 /**
@@ -91,11 +137,14 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
             override fun mousePressed(e: MouseEvent) {
                 val index = list.locationToIndex(e.point)
                 if (index < 0) return
-                val entry = model.getElementAt(index) as? PackageEntry ?: return
-                if (entry.dep.outdated && e.x <= CHECKBOX_HIT_WIDTH) {
-                    entry.checked = !entry.checked
-                    list.repaint()
-                    onSelectionChanged()
+                when (val entry = model.getElementAt(index)) {
+                    is PackageEntry -> if (entry.dep.outdated && e.x <= CHECKBOX_HIT_WIDTH) {
+                        entry.checked = !entry.checked
+                        list.repaint()
+                        onSelectionChanged()
+                    }
+                    // The section checkbox toggles every outdated package under the header.
+                    is HeaderEntry -> if (e.x <= CHECKBOX_HIT_WIDTH) toggleSection(entry)
                 }
             }
         })
@@ -106,13 +155,7 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
             JComponent.WHEN_FOCUSED,
         )
         // Rider-style speed search: hidden until you type, then filters/navigates by text.
-        ListSpeedSearch.installOn(list) { entry ->
-            when (entry) {
-                is PackageEntry -> entry.dep.name
-                is HeaderEntry -> entry.title
-                else -> ""
-            }
-        }
+        ListSpeedSearch.installOn(list) { PackageListLogic.searchText(it) }
     }
 
     val component: JComponent get() = list
@@ -123,6 +166,32 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
     }
 
     fun hasChecked(): Boolean = PackageListLogic.hasChecked(entries())
+
+    /** True when at least one checkable (outdated) row exists. */
+    fun hasOutdated(): Boolean = PackageListLogic.hasOutdated(entries())
+
+    /** True when every outdated row is checked (drives the Select/Deselect All label). */
+    fun allOutdatedChecked(): Boolean = PackageListLogic.allOutdatedChecked(entries())
+
+    /** Check all outdated rows if any is unchecked, else uncheck them all. */
+    fun toggleSelectAll() {
+        val outdated = PackageListLogic.outdatedEntries(entries())
+        if (outdated.isEmpty()) return
+        val newState = PackageListLogic.nextToggleState(outdated)
+        outdated.forEach { it.checked = newState }
+        list.repaint()
+        onSelectionChanged()
+    }
+
+    /** Check/uncheck every outdated row under one section header. */
+    private fun toggleSection(header: HeaderEntry) {
+        val outdated = header.packages.filter { it.dep.outdated }
+        if (outdated.isEmpty()) return
+        val newState = PackageListLogic.nextToggleState(outdated)
+        outdated.forEach { it.checked = newState }
+        list.repaint()
+        onSelectionChanged()
+    }
 
     /** Checked outdated packages grouped by the project path to upgrade against. */
     fun checkedByTarget(): Map<String, List<String>> = PackageListLogic.checkedByTarget(entries())
@@ -151,6 +220,14 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
     private class EntryRenderer : ListCellRenderer<ListEntry> {
         private val headerPanel = JPanel(BorderLayout()).apply { border = JBUI.Borders.empty(6, 8, 2, 8) }
         private val header = SimpleColoredComponent().apply { isOpaque = false }
+        private val headerCheck = ThreeStateCheckBox().apply {
+            isOpaque = false // display-only; the JList mouse listener drives toggling, not the component
+            border = JBUI.Borders.emptyRight(6)
+        }
+        private val headerWest = JPanel().apply {
+            isOpaque = false
+            layout = BoxLayout(this, BoxLayout.X_AXIS)
+        }
 
         private val rowPanel = JPanel(BorderLayout()).apply { border = JBUI.Borders.empty(3, 8, 3, 10) }
         private val checkBox = JCheckBox().apply { isOpaque = false; border = JBUI.Borders.emptyRight(6) }
@@ -164,7 +241,9 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
         init {
             westPanel.add(checkBox)
             westPanel.add(left)
-            headerPanel.add(header, BorderLayout.WEST)
+            headerWest.add(headerCheck)
+            headerWest.add(header)
+            headerPanel.add(headerWest, BorderLayout.WEST)
             rowPanel.add(westPanel, BorderLayout.WEST)
             rowPanel.add(right, BorderLayout.EAST)
         }
@@ -179,8 +258,19 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
             is HeaderEntry -> {
                 headerPanel.isOpaque = true
                 headerPanel.background = list.background // headers ignore selection highlight
+                headerCheck.background = list.background
+                // The section checkbox mirrors its packages: all / partial / none. Kept visible but
+                // greyed when nothing is checkable, so headers stay aligned (matches the row checkboxes).
+                headerCheck.isEnabled = PackageListLogic.sectionHasOutdated(entry)
+                headerCheck.state = when (PackageListLogic.sectionCheckState(entry)) {
+                    CheckState.ALL -> ThreeStateCheckBox.State.SELECTED
+                    CheckState.SOME -> ThreeStateCheckBox.State.DONT_CARE
+                    CheckState.NONE -> ThreeStateCheckBox.State.NOT_SELECTED
+                }
                 header.clear()
                 header.append(entry.title, SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
+                // Highlight the speed-search match inside the header title, like Rider's own lists.
+                SpeedSearchUtil.applySpeedSearchHighlighting(list, header, false, false)
                 headerPanel
             }
 
@@ -202,6 +292,10 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
                 left.append(entry.dep.name, nameAttr)
                 left.append("  ·  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 left.append(entry.dep.current, SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                // Highlight the speed-search match inside the row text, so the matched characters
+                // stand out as you type — same as Rider's native list search. (`mainTextOnly=false`:
+                // SimpleColoredComponent has no main-text index set here, so this is well-defined.)
+                SpeedSearchUtil.applySpeedSearchHighlighting(list, left, false, selected)
 
                 if (entry.dep.newVersion.isNotEmpty()) {
                     val attr = when {

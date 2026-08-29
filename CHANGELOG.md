@@ -4,7 +4,24 @@ All notable changes to **dotnet outdated GUI** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.4]
+
+### Fixed
+- **Much faster update check on large solutions.** The check now runs `dotnet outdated` once over
+  the whole solution (as the CLI does), unless you narrow the **Scope** picker to a subset. Before,
+  if any single project failed to restore (e.g. an `NU1102` version that doesn't exist — common
+  mid-migration), the plugin silently re-ran every project one at a time, turning a ~15s scan into
+  a minutes-long crawl. A whole-solution failure now surfaces the CLI's own error (which names the
+  broken project) instead.
+
+### Added
+- Toolbar **Select All / Deselect All** button — checks every outdated package in one click, or
+  clears them all. The label and icon follow the current state.
+- A **checkbox on each project header** — toggles every outdated package under that project. It
+  shows a three-state view (all / partial / none) and stays in sync with the toolbar button and
+  the individual package checkboxes.
+- **Speed-search match highlighting** — as you type to filter the list, the matched characters in
+  the package name and project header are now highlighted, like Rider's own lists.
 
 ## [0.1.3] - 2026-07-26
 
@@ -61,7 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editor banner suggesting the tool when a `.csproj`/`Directory.Packages.props` file is opened.
 - Errors routed to the IDE error reporter.
 
-[Unreleased]: https://github.com/iamr8/dotnet-outdated-gui/compare/v0.1.2...HEAD
+[0.1.4]: https://github.com/iamr8/dotnet-outdated-gui/compare/v0.1.3...v0.1.4
+[0.1.3]: https://github.com/iamr8/dotnet-outdated-gui/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/iamr8/dotnet-outdated-gui/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/iamr8/dotnet-outdated-gui/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/iamr8/dotnet-outdated-gui/releases/tag/v0.1.0

@@ -8,9 +8,14 @@ plugins {
     id("org.jetbrains.intellij.platform") version "2.11.0"
 }
 
+// Latest released Rider. Verified on every PR (see `pluginVerification` below).
+val CURRENT_RIDER = "2026.2"
+
 group = "com.github.iamr8"
 // Single source of truth for the plugin version (also consumed by CI / releases).
-version = file("VERSION").readText().trim()
+// CI overrides it for EAP dev builds via -PpluginVersion=<date+build> (see build.yml eap job).
+version = providers.gradleProperty("pluginVersion").orNull?.takeIf { it.isNotBlank() }
+    ?: file("VERSION").readText().trim()
 
 repositories {
     mavenCentral()
@@ -31,7 +36,10 @@ dependencies {
         if (file("/Applications/Rider.app").exists()) {
             local("/Applications/Rider.app")
         } else {
-            rider("2026.1.4")
+            // useInstaller = false: IPGP doesn't support Rider *installer* distributions and warns
+            // on every build otherwise ("Using Rider … with `useInstaller = true` is currently not
+            // supported"). Same flag the pluginVerification IDEs use.
+            rider("2026.1.4", useInstaller = false)
         }
         testFramework(TestFrameworkType.Platform)
     }
@@ -60,15 +68,24 @@ intellijPlatform {
         token = providers.environmentVariable("PUBLISH_TOKEN")
     }
 
-    // `verifyPlugin` (IntelliJ Plugin Verifier) checks binary compatibility across the range —
-    // the floor (2024.3), a mid build, and the latest — so older-Rider support stays honest.
+    // `verifyPlugin` (IntelliJ Plugin Verifier). Two scopes, because every extra IDE is a
+    // multi-GB download:
+    //   -PverifierIdes=current -> the current Rider only. Used by the PR check in build.yml, so
+    //                             API breakage surfaces on the PR instead of a weekly run.
+    //   (default)              -> the whole supported range: the floor (2024.3), a mid build and
+    //                             both current releases. This is what keeps since-build 243 honest,
+    //                             and is what compatibility.yml runs.
     pluginVerification {
         ides {
             // useInstaller = false: Rider is verified from the non-installer distribution.
-            create(IntelliJPlatformType.Rider, "2024.3.6") { useInstaller = false }
-            create(IntelliJPlatformType.Rider, "2025.2.4") { useInstaller = false }
-            create(IntelliJPlatformType.Rider, "2026.1.4") { useInstaller = false }
-            create(IntelliJPlatformType.Rider, "2026.2") { useInstaller = false }
+            if (providers.gradleProperty("verifierIdes").orNull == "current") {
+                create(IntelliJPlatformType.Rider, CURRENT_RIDER) { useInstaller = false }
+            } else {
+                create(IntelliJPlatformType.Rider, "2024.3.6") { useInstaller = false }
+                create(IntelliJPlatformType.Rider, "2025.2.4") { useInstaller = false }
+                create(IntelliJPlatformType.Rider, "2026.1.4") { useInstaller = false }
+                create(IntelliJPlatformType.Rider, CURRENT_RIDER) { useInstaller = false }
+            }
         }
     }
 }

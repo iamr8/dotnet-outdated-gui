@@ -13,7 +13,7 @@ Closes #
 
 ## Checklist
 - [ ] Logic is unit-tested where practical (command building, parsing, severity, solution parsing)
-- [ ] `CHANGELOG.md` updated under `[Unreleased]`
+- [ ] `CHANGELOG.md` updated under the current version section (matching `VERSION`, e.g. `## [0.1.4]`)
 - [ ] No unrelated changes / formatting churn
 - [ ] Matches existing code style
 
