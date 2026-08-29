@@ -67,9 +67,9 @@ jobs:
 
   # Every successful build on main is published as an EAP pre-release (GitHub only, NOT the
   # Marketplace) so the team can download the zip and install it in Rider for testing. The plugin
-  # version is date + build number (0.0.0-eap.<yyyyMMdd>.<run>) so it always sorts below a real
-  # release; the release notes name the target version (the VERSION file) and list the PRs since
-  # the last stable tag.
+  # version is date + build number (0.0.0-eap.<yyyyMMdd>.<run>); its 0.0.0 head keeps it below any
+  # real release in the IDE's version comparison. The release notes name the target version (the
+  # VERSION file) and list the PRs since the last stable tag.
   eap:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -102,7 +102,9 @@ jobs:
           echo "target=$target" >> "$GITHUB_OUTPUT"
 
       - name: Build EAP plugin
-        run: ./gradlew buildPlugin -PpluginVersion="${{ steps.ver.outputs.eap }}" -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
+        # verifyPluginStructure catches a bad EAP version string here (cheap, no IDE download)
+        # instead of failing after a merge to main.
+        run: ./gradlew verifyPluginStructure buildPlugin -PpluginVersion="${{ steps.ver.outputs.eap }}" -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
 
       - name: Collect PRs since last release
         id: prs
@@ -112,7 +114,7 @@ jobs:
           last="$(git tag -l 'v*' | sort -V | tail -1)"
           query="is:pr is:merged base:main"
           if [ -n "$last" ]; then
-            since="$(git log -1 --format=%cI "$last")"
+            since="$(git log -1 --format=%cd --date=format:%Y-%m-%d "$last")"
             query="$query merged:>$since"
             echo "base=$last" >> "$GITHUB_OUTPUT"
           else
@@ -137,7 +139,7 @@ jobs:
             **Early-access (EAP) dev build — target version `${{ steps.ver.outputs.target }}`.**
             Not published to the JetBrains Marketplace. For local testing only.
 
-            Plugin version: `${{ steps.ver.outputs.eap }}` (date + build; always sorts below a real release).
+            Plugin version: `${{ steps.ver.outputs.eap }}` (date + build; its `0.0.0` head keeps it below any real release).
 
             ### Install
             Download the `.zip` below, then in Rider:
