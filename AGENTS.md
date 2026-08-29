@@ -122,8 +122,13 @@ UI behavior that no check can cover is confirmed by installing the built zip in 
 ## Conventions & rules
 
 - **Commits**: Conventional Commits; end the message with
-  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. Update `CHANGELOG.md` under
-  `[Unreleased]` for user-facing changes.
+  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+- **Changelog targets a version, never `[Unreleased]`**: every user-facing change goes in
+  `CHANGELOG.md` under the current in-progress version section — the one matching the `VERSION`
+  file (e.g. `## [0.1.4]`). There is no `[Unreleased]` section. If the top section's version is
+  already released (a `v*` tag exists for it), bump `VERSION` and start a new section for the next
+  version. The top (newest) section carries no date until it ships; add the release date when it is
+  tagged. Keep a bottom link line per version (`[x.y.z]: …/compare/v<prev>...v<this>`).
 - **Git identity** in this repo: `iamr8` / `arash.shabbeh@gmail.com`. Push auth uses gh
   (repo-local credential helper `!gh auth git-credential`), not the machine keychain.
 - **Never commit secrets/tokens.** DSN is injected, tokens live in env / GitHub secrets.
@@ -141,6 +146,6 @@ Every PR must be enriched — not just a title:
   (create a fitting one if none applies).
 - **Base branch**: `main` for development; a **release** PR targets the `release` branch and
   includes the `VERSION` bump (see the Release model above).
-- Keep it focused — one concern per PR; update `CHANGELOG.md` under `[Unreleased]` for
-  user-facing changes.
+- Keep it focused — one concern per PR; record user-facing changes in `CHANGELOG.md` under the
+  current version section (see **Commits** above).
 ```
