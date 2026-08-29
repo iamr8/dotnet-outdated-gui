@@ -359,8 +359,9 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
             override fun run(indicator: ProgressIndicator) {
                 if (!ensureCli()) return
-                // dotnet list package can't load .shproj etc. -> per-project when unsupported present.
-                val (r, f) = runScoped(indicator, toleratesUnsupported = false, exec)
+                // dotnet list package can't load .shproj etc. -> per-project when unsupported present;
+                // it also hard-fails on a single unrestored project, so recover the rest per-project.
+                val (r, f) = runScoped(indicator, toleratesUnsupported = false, fallbackToPerProject = true, exec)
                 rows = r; failures = f
             }
 
@@ -401,7 +402,9 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
             override fun run(indicator: ProgressIndicator) {
                 if (!ensureCli()) return
                 // dotnet outdated tolerates .shproj etc. -> keep the fast single whole-solution call.
-                val (r, f) = runScoped(indicator, toleratesUnsupported = true, exec)
+                // No per-project fan-out on failure: it fails fast and names the broken project,
+                // and re-running all projects one-by-one is a minutes-long crawl that fixes nothing.
+                val (r, f) = runScoped(indicator, toleratesUnsupported = true, fallbackToPerProject = false, exec)
                 rows = r; failures = f
             }
 
@@ -420,21 +423,34 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     /**
-     * Runs the primary units (whole solution when all selected); if that yields nothing but
-     * produced failures, falls back to per-project so one broken project (e.g. a `.shproj`
-     * that the dotnet CLI can't load) can't sink the whole solution.
+     * Runs the primary units: the whole solution in one call when all projects are selected (the
+     * default), or one unit per project when the user narrowed the scope in the picker.
+     *
+     * [fallbackToPerProject] controls what happens when the whole-solution call comes back empty
+     * with a failure:
+     *  - Phase 2 (`dotnet outdated`) passes `false`: NO fan-out. The CLI fails fast and names the
+     *    broken project (e.g. an `NU1102` version that doesn't exist); re-running every project
+     *    one-by-one turns a ~15s solution call into a minutes-long crawl without fixing anything —
+     *    the broken projects still fail. The CLI error is surfaced instead; per-project is an
+     *    explicit capability via the scope picker.
+     *  - Phase 1 (`dotnet list package`) passes `true`: it hard-fails on any single unrestored or
+     *    unsupported project, so recover the rest with a per-project fan-out (each call is offline
+     *    and cheap). One broken project shouldn't blank the whole list.
      */
     private fun runScoped(
         indicator: ProgressIndicator,
         toleratesUnsupported: Boolean,
+        fallbackToPerProject: Boolean,
         exec: (ScanUnit) -> Pair<List<PackageSection>?, ScanFailure?>,
     ): Pair<List<PackageSection>, List<ScanFailure>> {
         val primary = primaryUnits(toleratesUnsupported)
         val (rows, failures) = runUnits(primary, indicator, exec)
-        val wasWholeSolution = primary.size == 1 && primary.first().path == solution?.solutionPath
-        if (rows.isEmpty() && failures.isNotEmpty() && wasWholeSolution) {
-            val fallback = perProjectUnits()
-            if (fallback.isNotEmpty()) return runUnits(fallback, indicator, exec)
+        if (fallbackToPerProject && rows.isEmpty() && failures.isNotEmpty()) {
+            val wasWholeSolution = primary.size == 1 && primary.first().path == solution?.solutionPath
+            if (wasWholeSolution) {
+                val fallback = perProjectUnits()
+                if (fallback.isNotEmpty()) return runUnits(fallback, indicator, exec)
+            }
         }
         return rows to failures
     }
