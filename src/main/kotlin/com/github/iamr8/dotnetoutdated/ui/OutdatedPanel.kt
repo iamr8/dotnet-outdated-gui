@@ -2,6 +2,8 @@ package com.github.iamr8.dotnetoutdated.ui
 
 import com.github.iamr8.dotnetoutdated.cli.CliFailures
 import com.github.iamr8.dotnetoutdated.cli.DotnetOutdatedRunner
+import com.github.iamr8.dotnetoutdated.cli.ScanPlan
+import com.github.iamr8.dotnetoutdated.cli.ScanUnit
 import com.github.iamr8.dotnetoutdated.cli.Solution
 import com.github.iamr8.dotnetoutdated.cli.SolutionModel
 import com.github.iamr8.dotnetoutdated.parse.ListPackagesParser
@@ -147,42 +149,6 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     private fun basePath(): String = project.basePath ?: System.getProperty("user.dir")
-
-    /** True when every project in the open solution is included (the default). */
-    private fun allProjectsSelected(): Boolean {
-        val sln = solution ?: return true
-        return sln.projects.isNotEmpty() && includedProjects.size == sln.projects.size
-    }
-
-    /** One call on the whole solution — used when all projects are selected. */
-    private fun solutionUnit(): ScanUnit? =
-        solution?.let { ScanUnit(it.name, it.solutionPath) }
-
-    /** One unit per included project (or the base dir when there is no solution). */
-    private fun perProjectUnits(): List<ScanUnit> {
-        val sln = solution
-        if (sln != null && sln.projects.isNotEmpty()) {
-            return sln.projects.filter { it.name in includedProjects }
-                .ifEmpty { sln.projects }
-                .map { ScanUnit(it.name, it.path) }
-        }
-        val base = basePath()
-        return listOf(ScanUnit(File(base).name, base))
-    }
-
-    /**
-     * Preferred scan units: the whole solution in one call when all projects are selected.
-     * A subset selection is always per-project. For tools that can't load unsupported project
-     * types (e.g. `dotnet list package` chokes on `.shproj`), pass [toleratesUnsupported] = false
-     * to go straight to per-project when the solution has such projects. `dotnet outdated`
-     * tolerates them, so it keeps the fast single whole-solution call.
-     */
-    private fun primaryUnits(toleratesUnsupported: Boolean): List<ScanUnit> {
-        val wholeSolutionOk = allProjectsSelected() &&
-            (toleratesUnsupported || solution?.hasUnsupportedProjects != true)
-        return if (wholeSolutionOk) listOfNotNull(solutionUnit()).ifEmpty { perProjectUnits() }
-        else perProjectUnits()
-    }
 
     /** Runs [exec] over each unit in parallel, collecting rows and per-unit failures. */
     private fun runUnits(
@@ -443,14 +409,11 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         fallbackToPerProject: Boolean,
         exec: (ScanUnit) -> Pair<List<PackageSection>?, ScanFailure?>,
     ): Pair<List<PackageSection>, List<ScanFailure>> {
-        val primary = primaryUnits(toleratesUnsupported)
+        val primary = ScanPlan.primaryUnits(solution, includedProjects, basePath(), toleratesUnsupported)
         val (rows, failures) = runUnits(primary, indicator, exec)
-        if (fallbackToPerProject && rows.isEmpty() && failures.isNotEmpty()) {
-            val wasWholeSolution = primary.size == 1 && primary.first().path == solution?.solutionPath
-            if (wasWholeSolution) {
-                val fallback = perProjectUnits()
-                if (fallback.isNotEmpty()) return runUnits(fallback, indicator, exec)
-            }
+        if (ScanPlan.shouldFallBackToPerProject(fallbackToPerProject, primary, solution, rows.isEmpty(), failures.isNotEmpty())) {
+            val fallback = ScanPlan.perProjectUnits(solution, includedProjects, basePath())
+            if (fallback.isNotEmpty()) return runUnits(fallback, indicator, exec)
         }
         return rows to failures
     }
@@ -620,9 +583,6 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         /** Balloons stay readable; the rest is in "Copy Details" and idea.log. */
         private const val MAX_SHOWN_FAILURES = 3
     }
-
-    /** A single thing to scan: a project (or the base dir), with a display label and CLI path. */
-    private data class ScanUnit(val label: String, val path: String)
 
     /**
      * A unit that couldn't be scanned: [summary] is the short, actionable line shown to the user,
