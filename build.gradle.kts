@@ -13,7 +13,9 @@ val CURRENT_RIDER = "2026.2"
 
 group = "com.github.iamr8"
 // Single source of truth for the plugin version (also consumed by CI / releases).
-version = file("VERSION").readText().trim()
+// CI overrides it for EAP dev builds via -PpluginVersion=<date+build> (see build.yml eap job).
+version = providers.gradleProperty("pluginVersion").orNull?.takeIf { it.isNotBlank() }
+    ?: file("VERSION").readText().trim()
 
 repositories {
     mavenCentral()

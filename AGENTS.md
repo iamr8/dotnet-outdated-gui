@@ -109,8 +109,15 @@ UI behavior that no check can cover is confirmed by installing the built zip in 
   (weekly plugin verifier, pinned to released Riders across the range — 2024.3.6 / 2025.2.4 /
   2026.1.4 / 2026.2; `recommended()` can resolve 404 EAPs),
   `release.yml`, plus Dependabot. Actions are pinned to latest majors.
+- **EAP dev builds**: every successful `build.yml` run on **`main`** publishes an **EAP GitHub
+  pre-release** (the `eap` job) — NOT the Marketplace. The plugin version is date + build number
+  (`0.0.0-eap.<yyyyMMdd>.<run>`, overriding `VERSION` via `-PpluginVersion`) so it always sorts
+  below a real release; the tag is `eap-<yyyyMMdd>.<run>`. The release notes name the target
+  version (the `VERSION` file / milestone) and list the PRs merged since the last stable `v*` tag.
+  For local testing: download the zip, install via Settings → Plugins → ⚙ → Install from Disk.
 - **Release model**: branch-based.
-  - `main` = development; `build.yml` only builds + verifies. Never releases.
+  - `main` = development; `build.yml` builds + verifies + publishes an EAP pre-release (above).
+    It never publishes to the Marketplace.
   - To release: bump `VERSION` **in the same PR**, then merge that PR into the **`release`**
     branch. `release.yml` gates on the version — if `VERSION` > the last released `v*` tag it
     tags `v<VERSION>`, builds, creates a GitHub Release, and publishes to the Marketplace
