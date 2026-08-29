@@ -160,4 +160,30 @@ class PackageListLogicTest {
         pkgs.forEach { it.checked = true }
         assertFalse(PackageListLogic.nextToggleState(pkgs)) // all checked -> uncheck
     }
+
+    @Test
+    fun searchTextIsPackageNameForRows() {
+        val entries = PackageListLogic.buildEntries(
+            listOf(section("MyProj", "net8.0", "/p.csproj", listOf(dep("Newtonsoft.Json")))),
+        )
+        val row = entries.filterIsInstance<PackageEntry>().single()
+        assertEquals("Newtonsoft.Json", PackageListLogic.searchText(row))
+    }
+
+    @Test
+    fun searchTextIsSectionTitleForHeaders() {
+        val entries = PackageListLogic.buildEntries(
+            listOf(section("MyProj", "net8.0", "/p.csproj", listOf(dep("A")))),
+        )
+        val header = entries.filterIsInstance<HeaderEntry>().single()
+        // Header title is also what the renderer highlights, so it must match the section label.
+        assertEquals("MyProj  ·  net8.0", header.title)
+        assertEquals("MyProj  ·  net8.0", PackageListLogic.searchText(header))
+    }
+
+    @Test
+    fun searchTextIsEmptyForNull() {
+        // ListSpeedSearch may hand the accessor a null element (e.g. an empty model); must not throw.
+        assertEquals("", PackageListLogic.searchText(null))
+    }
 }

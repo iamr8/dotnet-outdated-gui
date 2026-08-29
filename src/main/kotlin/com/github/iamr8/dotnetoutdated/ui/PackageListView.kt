@@ -103,6 +103,17 @@ internal object PackageListLogic {
 
     /** True when the header has at least one checkable (outdated) row. */
     fun sectionHasOutdated(header: HeaderEntry): Boolean = header.packages.any { it.dep.outdated }
+
+    /**
+     * Text a list entry is matched against by speed search: the package name for a row, the section
+     * title for a header, empty otherwise. This is also the text whose matched characters the
+     * renderer highlights.
+     */
+    fun searchText(entry: ListEntry?): String = when (entry) {
+        is PackageEntry -> entry.dep.name
+        is HeaderEntry -> entry.title
+        else -> ""
+    }
 }
 
 /**
@@ -144,13 +155,7 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
             JComponent.WHEN_FOCUSED,
         )
         // Rider-style speed search: hidden until you type, then filters/navigates by text.
-        ListSpeedSearch.installOn(list) { entry ->
-            when (entry) {
-                is PackageEntry -> entry.dep.name
-                is HeaderEntry -> entry.title
-                else -> ""
-            }
-        }
+        ListSpeedSearch.installOn(list) { PackageListLogic.searchText(it) }
     }
 
     val component: JComponent get() = list
@@ -287,9 +292,10 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
                 left.append(entry.dep.name, nameAttr)
                 left.append("  ·  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 left.append(entry.dep.current, SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                // Highlight the speed-search match inside the package name (main text only), so the
-                // matched characters stand out as you type — same as Rider's native list search.
-                SpeedSearchUtil.applySpeedSearchHighlighting(list, left, true, selected)
+                // Highlight the speed-search match inside the row text, so the matched characters
+                // stand out as you type — same as Rider's native list search. (`mainTextOnly=false`:
+                // SimpleColoredComponent has no main-text index set here, so this is well-defined.)
+                SpeedSearchUtil.applySpeedSearchHighlighting(list, left, false, selected)
 
                 if (entry.dep.newVersion.isNotEmpty()) {
                     val attr = when {
