@@ -6,6 +6,7 @@ import com.intellij.ui.ListSpeedSearch
 import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBList
+import com.intellij.ui.speedSearch.SpeedSearchUtil
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.ThreeStateCheckBox
 import java.awt.BorderLayout
@@ -263,6 +264,8 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
                 }
                 header.clear()
                 header.append(entry.title, SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
+                // Highlight the speed-search match inside the header title, like Rider's own lists.
+                SpeedSearchUtil.applySpeedSearchHighlighting(list, header, false, false)
                 headerPanel
             }
 
@@ -284,6 +287,9 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
                 left.append(entry.dep.name, nameAttr)
                 left.append("  ·  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 left.append(entry.dep.current, SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                // Highlight the speed-search match inside the package name (main text only), so the
+                // matched characters stand out as you type — same as Rider's native list search.
+                SpeedSearchUtil.applySpeedSearchHighlighting(list, left, true, selected)
 
                 if (entry.dep.newVersion.isNotEmpty()) {
                     val attr = when {
