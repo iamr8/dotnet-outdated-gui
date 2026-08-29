@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A **checkbox on each project header** — toggles every outdated package under that project. It
   shows a three-state view (all / partial / none) and stays in sync with the toolbar button and
   the individual package checkboxes.
+- **Speed-search match highlighting** — as you type to filter the list, the matched characters in
+  the package name and project header are now highlighted, like Rider's own lists.
 
 ## [0.1.3] - 2026-07-26
 
