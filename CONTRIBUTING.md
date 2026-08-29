@@ -36,7 +36,8 @@ ui/      tool window, package list view, editor notification
   solution parsing). UI wiring is verified via `runIde`.
 - Every functional change should come with a test. Run `./gradlew test` before opening a PR.
 - Match the existing Kotlin style; keep files focused and small.
-- Update `CHANGELOG.md` under `[Unreleased]` with a short note.
+- Update `CHANGELOG.md` under the current version section (the one matching the `VERSION` file,
+  e.g. `## [0.1.4]`) with a short note — there is no `[Unreleased]` section.
 
 ## Releasing
 
