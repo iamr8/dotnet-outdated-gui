@@ -15,4 +15,4 @@ What you'd like to happen.
 ## Alternatives considered
 
 ## Additional context
-Mockups, references to the built-in Rider NuGet tool window, `dotnet outdated` CLI options, etc.
+Mockups, references to the built-in Rider NuGet tool window, etc.

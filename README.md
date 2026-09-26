@@ -10,9 +10,9 @@ GUI*. No extra tool to install: it uses your .NET SDK's own MSBuild and NuGet.
 [![Release](https://img.shields.io/github/v/release/iamr8/dotnet-outdated-gui?style=flat-square)](https://github.com/iamr8/dotnet-outdated-gui/releases)
 [![Last commit](https://img.shields.io/github/last-commit/iamr8/dotnet-outdated-gui?style=flat-square)](https://github.com/iamr8/dotnet-outdated-gui/commits/main)
 [![License: MIT](https://img.shields.io/github/license/iamr8/dotnet-outdated-gui?style=flat-square)](LICENSE)
-[![JetBrains Marketplace](https://img.shields.io/jetbrains/plugin/v/32989?style=flat-square&label=marketplace)](https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui)
-[![Downloads](https://img.shields.io/jetbrains/plugin/d/32989?style=flat-square&label=downloads)](https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui)
-[![Rating](https://img.shields.io/jetbrains/plugin/r/rating/32989?style=flat-square)](https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui/reviews)
+[![JetBrains Marketplace](https://img.shields.io/jetbrains/plugin/v/32989?style=flat-square&label=marketplace)](https://plugins.jetbrains.com/plugin/32989)
+[![Downloads](https://img.shields.io/jetbrains/plugin/d/32989?style=flat-square&label=downloads)](https://plugins.jetbrains.com/plugin/32989)
+[![Rating](https://img.shields.io/jetbrains/plugin/r/rating/32989?style=flat-square)](https://plugins.jetbrains.com/plugin/32989/reviews)
 
 ## Screenshot
 
@@ -20,8 +20,9 @@ GUI*. No extra tool to install: it uses your .NET SDK's own MSBuild and NuGet.
 
 ## Features
 
-- **Version ranges stay ranges** — `[12.0.1,14.0.0)` upgrades to `[13.0.4,14.0.0)`. A newer
-  version outside the range shows gray ("capped by range") and can't be checked.
+- **Version ranges stay ranges** — `[12.0.1,14.0.0)` upgrades to `[13.0.4,14.0.0)`. The new
+  version is the newest one inside the range. A version above the upper bound is never offered;
+  turn on **Show versions outside the range** to see it (gray, not checkable).
 - **Central Package Management** — updates the central `<PackageVersion>` (or a `VersionOverride`)
   and leaves the versionless `<PackageReference>` alone.
 - **Versions in properties** — `Version="$(PollyVersion)"` updates the property; packages that share
@@ -38,7 +39,7 @@ GUI*. No extra tool to install: it uses your .NET SDK's own MSBuild and NuGet.
 
 ## Install
 
-From the [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui):
+From the [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/32989):
 
 1. In Rider, open **Settings → Plugins → Marketplace**.
 2. Search for **NuGet (Extended)**.
@@ -71,7 +72,8 @@ Or grab a `.zip` from [Releases](https://github.com/iamr8/dotnet-outdated-gui/re
    **Update Selected**. A dialog shows the plan: the files, other packages that share a version,
    and anything skipped (with the reason). **Upgrade** edits the files, restores, and checks again.
    **Undo** reverts the files.
-4. Gray versions are newer but outside the range you wrote. Hover a row to see why.
+4. A package already at the newest version inside its range is up to date, so it is not listed. Turn
+   on **Show versions outside the range** to list it with the newer version (gray).
 5. **Reload Packages** (↻) lists every package, up to date or not, with no update check. It needs
    **List all packages** in settings.
 
@@ -85,7 +87,8 @@ Marketplace.
 
 Settings are saved per project (`.idea/nuget-extended.xml`):
 
-- **Packages analyzed** — list all packages (off by default), auto-referenced packages, transitive
+- **Packages analyzed** — list all packages (off by default), versions outside the range (off by
+  default), auto-referenced packages, transitive
   packages + depth (an upgrade adds a direct reference).
 - **Version policy** — pre-release + label, version lock, maximum version (never above a range's
   upper bound), only versions older than N days.
@@ -102,7 +105,7 @@ engine in `helper/`.
 ```bash
 dotnet test helper/Core.Tests && dotnet test helper/Helper.Tests   # engine tests
 ./gradlew test          # plugin unit tests
-./gradlew buildPlugin    # build/distributions/dotnet-outdated-rider-<version>.zip (engine included)
+./gradlew buildPlugin    # build/distributions/nuget-extended-rider-<version>.zip (engine included)
 ./gradlew runIde         # sandbox Rider with the plugin
 ```
 

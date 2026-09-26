@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MSBuild and NuGet (the .NET 6 SDK or later), with your NuGet.config, package source mapping and
   credential providers.
 - **Upgrades keep version ranges.** `[12.0.1,14.0.0)` becomes `[13.0.4,14.0.0)`, not a fixed
-  `13.0.4`. A newer version outside the range shows gray ("capped by range") and can't be checked.
+  `13.0.4`. The new version is the newest one inside the range. A version above the
+  upper bound is never offered, and is hidden unless **Show versions outside the range** is on.
 - **Exact package upgrades.** Upgrading `Foo` no longer also upgrades `Foo.Bar`.
 - **Maximum version** never goes above a range's upper bound.
 - **Faster checks.** One engine per solution keeps project data between scans and uses NuGet's HTTP
@@ -33,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Upper-only ranges like `(,3.0.0]` no longer fail the scan.
 - Cancel during a scan no longer leaves the toolbar disabled.
 - EAP builds are now `0.2.0-eap.*`, so they sort above the released 0.1.4.
+- The plugin no longer restores at the same time as Rider's own NuGet restore. Both wrote the same
+  obj files, and Rider's restore failed with "…nuget.g.props already exists". The plugin now waits
+  for Rider, and restores only what Rider did not.
+- **Pre-release label** now keeps only pre-releases with that label (`rc` matches `rc.1`).
+- **Maximum version** accepts a single number (`8` means any 8.x), and the settings page rejects
+  text it can't read instead of ignoring it.
+- **Include file-based apps** works on its own; it no longer needs "Find projects in subfolders".
 
 ## [0.1.4] - 2026-08-29
 

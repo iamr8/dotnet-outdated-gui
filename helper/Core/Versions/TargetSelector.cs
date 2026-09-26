@@ -24,8 +24,9 @@ public static class TargetSelector
             "Never" => false,
             _ => resolved.IsPrerelease,
         };
+        var label = options.PreReleaseLabel.Trim();
         var versions = Filter(candidates, framework, developmentDependency, options, now)
-            .Where(v => includePre || !v.IsPrerelease)
+            .Where(v => !v.IsPrerelease || (includePre && HasLabel(v, label)))
             .ToList();
         var behavior = Behavior(options.VersionLock, includePre);
         var prefix = resolved.IsPrerelease
@@ -87,6 +88,10 @@ public static class TargetSelector
         return best != null && range.Float != null && !range.Float.Satisfies(best) ? null : best;
     }
 
+    /// An empty label allows every pre-release; otherwise the first label part must start with it ("rc" matches "rc.1", "rc2").
+    private static bool HasLabel(NuGetVersion v, string label) =>
+        label.Length == 0 || v.ReleaseLabels.FirstOrDefault()?.StartsWith(label, StringComparison.OrdinalIgnoreCase) == true;
+
     private static NuGetVersion? Higher(NuGetVersion? a, NuGetVersion? b)
     {
         if (a == null) return b;
@@ -108,10 +113,12 @@ public static class TargetSelector
         _ => includePre ? NuGetVersionFloatBehavior.AbsoluteLatest : NuGetVersionFloatBehavior.Major,
     };
 
-    /// Same parsing as dotnet-outdated's --maximum-version: missing build/revision parts mean "any".
+    /// Missing parts mean "any": "8" allows every 8.x, "8.0" every 8.0.x.
     private static NuGetVersion? ParseMaximum(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
+        if (int.TryParse(text.Trim(), out var major) && major >= 0)
+            return new NuGetVersion(new Version(major, int.MaxValue, int.MaxValue, int.MaxValue));
         if (!Version.TryParse(text.Trim(), out var v)) return null;
         var build = v.Build == -1 ? int.MaxValue : v.Build;
         var revision = v.Revision == -1 ? int.MaxValue : v.Revision;

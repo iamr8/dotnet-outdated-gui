@@ -1,4 +1,4 @@
-rootProject.name = "dotnet-outdated-rider"
+rootProject.name = "nuget-extended-rider"
 
 pluginManagement {
     repositories {

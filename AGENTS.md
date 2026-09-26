@@ -37,8 +37,8 @@ export JAVA_HOME=<jdk-22-home>
 ./gradlew verifyPluginStructure buildPlugin       # validate + package -> build/distributions/*.zip
 ./gradlew runIde                                  # sandbox Rider to drive the UI
 # install a local build into the real Rider for manual testing:
-rm -rf "$HOME/Library/Application Support/JetBrains/Rider2026.1/plugins/dotnet-outdated-rider"
-unzip -q build/distributions/dotnet-outdated-rider-$(cat VERSION).zip -d "$HOME/Library/Application Support/JetBrains/Rider2026.1/plugins"
+rm -rf "$HOME/Library/Application Support/JetBrains/Rider2026.1/plugins/nuget-extended-rider"
+unzip -q build/distributions/nuget-extended-rider-$(cat VERSION).zip -d "$HOME/Library/Application Support/JetBrains/Rider2026.1/plugins"
 ```
 
 ## Architecture
@@ -58,8 +58,8 @@ ui/       OutdatedToolWindowFactory, OutdatedPanel, PackageListView, OutdatedRow
 ### Key behaviors
 
 - **Core value prop (lead with this in all user-facing copy)**: upgrades **keep version ranges**
-  (range is intent: the offered version is the highest inside the range; newer ones show as
-  "capped by range"), and work with **Central Package Management**, `VersionOverride` and
+  (range is intent: the offered version is the highest inside the range; newer ones are "capped by
+  range" and hidden unless the user turns them on), and work with **Central Package Management**, `VersionOverride` and
   `$(Prop)` versions. Floating versions update by restore only.
 - **Engine**: one helper process per solution, started from the solution folder (its `global.json`
   picks the SDK). The helper is read-only; it returns edits that the plugin applies.

@@ -71,6 +71,20 @@ public class TargetSelectorTests
     }
 
     [Fact]
+    public void PreReleaseLabelKeepsOnlyThatLabel()
+    {
+        var s = Pick("1.0.0", "1.0.0", C("1.0.0", "1.1.0", "2.0.0-rc.1", "2.1.0-dev.5"), new ScanOptions(PreRelease: "Always", PreReleaseLabel: "rc"));
+        Assert.Equal("2.0.0-rc.1", s.Target?.ToNormalizedString());
+    }
+
+    [Fact]
+    public void PreReleaseLabelIgnoresCaseAndKeepsStableVersions()
+    {
+        var s = Pick("1.0.0", "1.0.0", C("1.0.0", "3.0.0", "2.0.0-rc.1", "3.1.0-beta"), new ScanOptions(PreRelease: "Always", PreReleaseLabel: "RC"));
+        Assert.Equal("3.0.0", s.Target?.ToNormalizedString());
+    }
+
+    [Fact]
     public void NumericPrereleasePartsCompareAsNumbers()
     {
         var s = Pick("1.0.0-beta.2", "1.0.0-beta.2", C("1.0.0-beta.2", "1.0.0-beta.10"), new ScanOptions(PreRelease: "Always"));
@@ -82,6 +96,12 @@ public class TargetSelectorTests
     {
         Assert.Equal("1.9.0", Pick("1.0.0", "1.0.0", C("1.0.0", "1.9.0", "2.5.0"), new ScanOptions(MaximumVersion: "1.9")).Target?.ToNormalizedString());
         Assert.Equal("7.2.4", Pick("[7.0.0,8.0.0)", "7.0.0", C("7.0.0", "7.2.4", "8.8.0"), new ScanOptions(MaximumVersion: "9.0")).Target?.ToNormalizedString());
+    }
+
+    [Fact]
+    public void MaximumVersionWithOnlyAMajorMeansAnyVersionOfIt()
+    {
+        Assert.Equal("1.9.0", Pick("1.0.0", "1.0.0", C("1.0.0", "1.9.0", "2.5.0"), new ScanOptions(MaximumVersion: "1")).Target?.ToNormalizedString());
     }
 
     [Fact]

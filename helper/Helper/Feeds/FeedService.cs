@@ -154,7 +154,7 @@ public sealed class FeedService : IDisposable
         await gate.WaitAsync(ct);
         try
         {
-            using var cache = new SourceCacheContext(); // NuGet HTTP cache on (unlike dotnet-outdated's NoCache)
+            using var cache = new SourceCacheContext(); // NuGet HTTP cache on, so warm scans are fast
             return (await action(cache), null);
         }
         catch (Exception) when (ct.IsCancellationRequested)

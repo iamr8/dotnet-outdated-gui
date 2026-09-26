@@ -10,8 +10,8 @@
 
         <ul>
           <li><b>Version ranges stay ranges</b> - <code>[12.0.1,14.0.0)</code> upgrades to
-              <code>[13.0.4,14.0.0)</code>, not to a fixed version. A newer version outside the range is shown,
-              gray, as "capped by range".</li>
+              <code>[13.0.4,14.0.0)</code>, not to a fixed version. The new version is the newest one inside the
+              range; a version above the upper bound is never offered.</li>
           <li><b>Central Package Management</b> - updates the central <code>&lt;PackageVersion&gt;</code> in
               <code>Directory.Packages.props</code> (or a <code>VersionOverride</code>) and leaves the versionless
               <code>&lt;PackageReference&gt;</code> alone.</li>
@@ -45,7 +45,7 @@
           Platform-provided (since 2023.3) — no third-party service, no extra dependency.
         -->
         <errorHandler implementation="com.intellij.diagnostic.JetBrainsMarketplaceErrorReportSubmitter"/>
-        <editorNotificationProvider implementation="com.github.iamr8.dotnetoutdated.ui.DotnetProjectNotificationProvider"/>
+        <editorNotificationProvider implementation="com.github.iamr8.nugetextended.ui.DotnetProjectNotificationProvider"/>
 
         <!-- Balloons for dotnet CLI / user-project failures (not plugin bugs). -->
         <notificationGroup id="NuGet (Extended)" displayType="BALLOON"/>
@@ -74,17 +74,17 @@
             parentId="tools"
             id="nuget.extended"
             displayName="NuGet (Extended)"
-            instance="com.github.iamr8.dotnetoutdated.settings.OutdatedConfigurable"/>
+            instance="com.github.iamr8.nugetextended.settings.OutdatedConfigurable"/>
         <toolWindow
             id="NuGet (Extended)"
             anchor="right"
-            icon="/icons/dotnetOutdated.svg"
-            factoryClass="com.github.iamr8.dotnetoutdated.ui.OutdatedToolWindowFactory"/>
+            icon="/icons/nugetExtended.svg"
+            factoryClass="com.github.iamr8.nugetextended.ui.OutdatedToolWindowFactory"/>
     </extensions>
 
     <projectListeners>
         <!-- Project, props, targets, global.json and NuGet.config changes -> the engine's cache. -->
-        <listener class="com.github.iamr8.dotnetoutdated.engine.FileWatch"
+        <listener class="com.github.iamr8.nugetextended.engine.FileWatch"
                   topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
     </projectListeners>
 </idea-plugin>

@@ -23,7 +23,6 @@ A clear description of the bug.
 - Rider version:
 - OS:
 - `dotnet --version`:
-- `dotnet outdated --version`:
 
 ## Logs
 If an error was reported by the IDE, paste it here (the plugin's "Copy Error Report to
