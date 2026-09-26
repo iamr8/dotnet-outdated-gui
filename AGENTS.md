@@ -147,8 +147,7 @@ UI behavior that no check can cover is confirmed by installing the built zip in 
 
 ## Conventions & rules
 
-- **Commits**: Conventional Commits; end the message with
-  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+- **Commits**: Conventional Commits.
 - **Changelog targets a version, never `[Unreleased]`**: every user-facing change goes in
   `CHANGELOG.md` under the current in-progress version section — the one matching the `VERSION`
   file (e.g. `## [0.1.4]`). There is no `[Unreleased]` section. If the top section's version is
