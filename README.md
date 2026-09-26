@@ -5,11 +5,11 @@ update checks and upgrades that **keep your version ranges** (`[1.0.0,2.0.0)`, `
 work with **Central Package Management** (`Directory.Packages.props`). Formerly *dotnet outdated
 GUI*. No extra tool to install: it uses your .NET SDK's own MSBuild and NuGet.
 
-[![Build](https://img.shields.io/github/actions/workflow/status/iamr8/dotnet-outdated-gui/build.yml?branch=main&style=flat-square&label=build)](https://github.com/iamr8/dotnet-outdated-gui/actions/workflows/build.yml)
-[![CodeQL](https://img.shields.io/github/actions/workflow/status/iamr8/dotnet-outdated-gui/codeql.yml?branch=main&style=flat-square&label=codeql)](https://github.com/iamr8/dotnet-outdated-gui/actions/workflows/codeql.yml)
-[![Release](https://img.shields.io/github/v/release/iamr8/dotnet-outdated-gui?style=flat-square)](https://github.com/iamr8/dotnet-outdated-gui/releases)
-[![Last commit](https://img.shields.io/github/last-commit/iamr8/dotnet-outdated-gui?style=flat-square)](https://github.com/iamr8/dotnet-outdated-gui/commits/main)
-[![License: MIT](https://img.shields.io/github/license/iamr8/dotnet-outdated-gui?style=flat-square)](LICENSE)
+[![Build](https://img.shields.io/github/actions/workflow/status/iamr8/nuget-extended/build.yml?branch=main&style=flat-square&label=build)](https://github.com/iamr8/nuget-extended/actions/workflows/build.yml)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/iamr8/nuget-extended/codeql.yml?branch=main&style=flat-square&label=codeql)](https://github.com/iamr8/nuget-extended/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/iamr8/nuget-extended?style=flat-square)](https://github.com/iamr8/nuget-extended/releases)
+[![Last commit](https://img.shields.io/github/last-commit/iamr8/nuget-extended?style=flat-square)](https://github.com/iamr8/nuget-extended/commits/main)
+[![License: MIT](https://img.shields.io/github/license/iamr8/nuget-extended?style=flat-square)](LICENSE)
 [![JetBrains Marketplace](https://img.shields.io/jetbrains/plugin/v/32989?style=flat-square&label=marketplace)](https://plugins.jetbrains.com/plugin/32989)
 [![Downloads](https://img.shields.io/jetbrains/plugin/d/32989?style=flat-square&label=downloads)](https://plugins.jetbrains.com/plugin/32989)
 [![Rating](https://img.shields.io/jetbrains/plugin/r/rating/32989?style=flat-square)](https://plugins.jetbrains.com/plugin/32989/reviews)
@@ -45,7 +45,7 @@ From the [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/32989):
 2. Search for **NuGet (Extended)**.
 3. Click **Install**, then restart the IDE when prompted.
 
-Or grab a `.zip` from [Releases](https://github.com/iamr8/dotnet-outdated-gui/releases) and install via
+Or grab a `.zip` from [Releases](https://github.com/iamr8/nuget-extended/releases) and install via
 **Settings → Plugins → ⚙ → Install Plugin from Disk…**
 
 > Embedding the JetBrains Marketplace card/install **widgets** (`mp-widget.js`) requires a page that
