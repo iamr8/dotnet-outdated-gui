@@ -28,11 +28,11 @@
         <p>No extra tool to install: the plugin uses your .NET SDK's own MSBuild and NuGet (the .NET 6 SDK or
         later), with your NuGet.config, package source mapping and credential providers.</p>
 
-        <p>Source &amp; issues: <a href="https://github.com/iamr8/dotnet-outdated-gui">github.com/iamr8/dotnet-outdated-gui</a></p>
+        <p>Source &amp; issues: <a href="https://github.com/iamr8/nuget-extended">github.com/iamr8/nuget-extended</a></p>
     ]]></description>
 
     <change-notes><![CDATA[
-        See the <a href="https://github.com/iamr8/dotnet-outdated-gui/blob/main/CHANGELOG.md">CHANGELOG</a>
+        See the <a href="https://github.com/iamr8/nuget-extended/blob/main/CHANGELOG.md">CHANGELOG</a>
         for release notes.
     ]]></change-notes>
 

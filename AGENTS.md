@@ -9,7 +9,7 @@ NuGet packages for updates and upgrades them in place, keeping version ranges an
 Management intact. A bundled .NET engine (`helper/`) does the work with the user's own SDK
 MSBuild and NuGet.
 
-- Repo: https://github.com/iamr8/dotnet-outdated-gui
+- Repo: https://github.com/iamr8/nuget-extended
 - Plugin id: `com.github.iamr8.dotnetoutdated` (never changes) · name: **NuGet (Extended)** (`PluginText.NAME`)
 - Base package / Gradle group: `com.github.iamr8`
 

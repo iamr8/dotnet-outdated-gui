@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: marketplace
-      # Marketplace slug is the numeric id joined to the repo name, e.g. 32989-dotnet-outdated-gui.
+      # Marketplace slug is the numeric id joined to the repo name, e.g. 32989-nuget-extended.
       url: https://plugins.jetbrains.com/plugin/${{ vars.PLUGIN_ID }}-${{ github.event.repository.name }}
     env:
       PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}

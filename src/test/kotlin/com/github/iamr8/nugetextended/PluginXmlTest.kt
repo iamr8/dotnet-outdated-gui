@@ -34,7 +34,6 @@ class PluginXmlTest {
     fun descriptionNoLongerNeedsTheCliTool() {
         val description = xml.getElementsByTagName("description").item(0).textContent
         assertFalse(description.contains("global tool"))
-        // The repo URL (…/dotnet-outdated-gui) may stay; the old CLI tool may not.
-        assertFalse(Regex("dotnet-outdated(?!-gui)").containsMatchIn(description))
+        assertFalse(description.contains("dotnet-outdated"))
     }
 }
