@@ -1,10 +1,48 @@
 # Changelog
 
-All notable changes to **dotnet outdated GUI** are documented here.
+All notable changes to **NuGet (Extended)** (formerly *dotnet outdated GUI*) are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.4]
+## [0.2.0]
+
+### Changed
+- **Renamed to NuGet (Extended).** The tool window, settings page and notifications use the new
+  name. Your saved tool window place and notification settings reset once.
+- **No `dotnet-outdated` tool needed.** The plugin ships its own engine. It uses your .NET SDK's
+  MSBuild and NuGet (the .NET 6 SDK or later), with your NuGet.config, package source mapping and
+  credential providers.
+- **Upgrades keep version ranges.** `[12.0.1,14.0.0)` becomes `[13.0.4,14.0.0)`, not a fixed
+  `13.0.4`. The new version is the newest one inside the range. A version above the
+  upper bound is never offered, and is hidden unless **Show versions outside the range** is on.
+- **Exact package upgrades.** Upgrading `Foo` no longer also upgrades `Foo.Bar`.
+- **Maximum version** never goes above a range's upper bound.
+- **Faster checks.** One engine per solution keeps project data between scans and uses NuGet's HTTP
+  cache.
+
+### Added
+- Versions in properties (`Version="$(PollyVersion)"`): the property is updated, and other packages
+  that share it are listed before anything changes.
+- An upgrade plan before any change: files, shared versions, skipped packages. One Undo reverts all
+  files.
+- Floating versions (`2.*`) update through a restore, with no file edit.
+- Out-of-date projects are restored before the scan. Turn it off with **Never run dotnet restore**.
+- A project opened in safe mode (not trusted) is never restored and its file-based apps are not
+  read. Out-of-date projects in it are listed as skipped.
+
+### Fixed
+- Upper-only ranges like `(,3.0.0]` no longer fail the scan.
+- Cancel during a scan no longer leaves the toolbar disabled.
+- EAP builds are now `0.2.0-eap.*`, so they sort above the released 0.1.4.
+- The plugin no longer restores at the same time as Rider's own NuGet restore. Both wrote the same
+  obj files, and Rider's restore failed with "…nuget.g.props already exists". The plugin now waits
+  for Rider, and restores only what Rider did not.
+- **Pre-release label** now keeps only pre-releases with that label (`rc` matches `rc.1`).
+- **Maximum version** accepts a single number (`8` means any 8.x), and the settings page rejects
+  text it can't read instead of ignoring it.
+- **Include file-based apps** works on its own; it no longer needs "Find projects in subfolders".
+
+## [0.1.4] - 2026-08-29
 
 ### Fixed
 - **Much faster update check on large solutions.** The check now runs `dotnet outdated` once over
@@ -78,6 +116,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editor banner suggesting the tool when a `.csproj`/`Directory.Packages.props` file is opened.
 - Errors routed to the IDE error reporter.
 
+[0.2.0]: https://github.com/iamr8/dotnet-outdated-gui/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/iamr8/dotnet-outdated-gui/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/iamr8/dotnet-outdated-gui/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/iamr8/dotnet-outdated-gui/compare/v0.1.1...v0.1.2

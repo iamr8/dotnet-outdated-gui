@@ -50,6 +50,40 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
+// The .NET helper engine (helper/). Published framework-dependent; shipped under <plugin>/helper/.
+val helperOut = layout.buildDirectory.dir("helper")
+val buildHelper by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Publishes the .NET helper engine into build/helper."
+    // Exclude bin/obj: their own build output would otherwise make this task's up-to-date check
+    // never settle (every dotnet build touches them, even when nothing under source changed).
+    inputs.files(fileTree("helper/Core") { exclude("bin/**", "obj/**") })
+    inputs.files(fileTree("helper/Helper") { exclude("bin/**", "obj/**") })
+    inputs.file("helper/Directory.Build.props")
+    outputs.dir(helperOut)
+    doFirst {
+        // A stale file from a previous publish (e.g. one -p:UseAppHost=false flip) must never
+        // survive into the zip just because dotnet publish doesn't remove outputs on its own.
+        delete(helperOut)
+    }
+    commandLine(
+        "dotnet", "publish", "helper/Helper/Helper.csproj",
+        "-c", "Release",
+        "-o", helperOut.get().asFile.absolutePath,
+        "-p:Version=${project.version.toString().substringBefore('-')}",
+        // The CI-built native apphost is platform-specific; the plugin always runs it via
+        // `dotnet Helper.dll`, so the apphost is dead weight, not a usable entry point.
+        "-p:UseAppHost=false",
+        "--nologo",
+    )
+}
+
+tasks.named<org.jetbrains.intellij.platform.gradle.tasks.PrepareSandboxTask>("prepareSandbox") {
+    dependsOn(buildHelper)
+    // <sandbox>/plugins/<pluginName>/helper - HelperService looks exactly there.
+    from(helperOut) { into(pluginName.map { "$it/helper" }) }
+}
+
 intellijPlatform {
     // No custom settings/searchable options in this plugin.
     buildSearchableOptions = false

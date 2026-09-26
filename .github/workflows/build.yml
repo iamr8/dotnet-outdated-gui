@@ -22,12 +22,39 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            6.0.x
+            8.0.x
+            10.0.x
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
       - name: Test, verify & build
         # -Dorg.gradle.java.home overrides the machine-specific value in gradle.properties.
         run: ./gradlew test verifyPluginProjectConfiguration verifyPluginStructure buildPlugin -Dorg.gradle.java.home="$JAVA_HOME" --stacktrace
+
+      - name: Check the packaged helper starts
+        run: |
+          zip=$(ls build/distributions/*.zip | head -1)
+          rm -rf "$RUNNER_TEMP/pkg" && mkdir -p "$RUNNER_TEMP/pkg" && unzip -q "$zip" -d "$RUNNER_TEMP/pkg"
+          # Exactly <plugin>/helper/Helper.dll, one folder below the zip root (where HelperService looks).
+          helper="$RUNNER_TEMP/pkg/$(ls "$RUNNER_TEMP/pkg" | head -1)/helper/Helper.dll"
+          test -f "$helper"
+          # `! cmd | grep ...` would not trip `set -e` here (an inverted pipeline's failure is
+          # ignored by -e), so check explicitly instead of relying on the exit code of `!`.
+          # Microsoft.Build.Locator.dll is the one allowed shipped dependency; every other
+          # Microsoft.Build* (Framework, Utilities.Core, ...) must not be there.
+          if ls "$(dirname "$helper")" | grep -E '^(NuGet\.|Microsoft\.Build)' | grep -v '^Microsoft\.Build\.Locator\.dll$'; then
+            echo "::error::helper ships a NuGet/MSBuild dll it must not ship"
+            exit 1
+          fi
+          first=$(echo '{"id":1,"method":"shutdown","params":{}}' | dotnet "$helper" "$RUNNER_TEMP" | head -1)
+          echo "$first"
+          echo "$first" | grep -q '"event":"hello"'
 
       # Compatibility check at PR time, against the current Rider only (one IDE download).
       # The full supported range (2024.3.6 / 2025.2.4 / 2026.1.4 / current) runs in compatibility.yml.
@@ -65,13 +92,65 @@ jobs:
           path: build/distributions/*.zip
           if-no-files-found: error
 
+  # The .NET helper engine's own test suite, across the SDK range it must run under (Global
+  # Constraints: SDK 6 and later). Independent of the Kotlin `build` job above (no Gradle here).
+  helper-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sdk: "6.0.x"
+            tfm: net6.0
+          - sdk: "8.0.x"
+            tfm: net8.0
+          - sdk: "10.0.x"
+            tfm: net8.0
+    steps:
+      - uses: actions/checkout@v7
+      # Always install all three SDKs, not just matrix.sdk (+10.0.x): an offline fixture restore
+      # needs the exact Microsoft.NETCore.App.Ref pack for its TFM in <dotnet root>/packs, and the
+      # fixtures' cleared/private feed cannot download one. E.g. SDK 10.0.401 resolves net8.0 to
+      # 8.0.31 and net6.0 to 6.0.36 - those packs only exist if the matching SDK was installed.
+      # The pin below still selects which SDK the helper under test actually loads.
+      - name: Set up .NET (6.0.x, 8.0.x, 10.0.x)
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            6.0.x
+            8.0.x
+            10.0.x
+      - name: Pin the SDK under test
+        # Tests build with the default SDK 10; the helper under test must load the pinned one.
+        # FixtureSolution.NewDir() writes a global.json (rollForward latestPatch) into each fixture
+        # dir from HELPER_TEST_SDK, so every dotnet invocation against a fixture picks it up.
+        run: |
+          ver=$(dotnet --list-sdks | awk '{print $1}' | grep "^$(echo '${{ matrix.sdk }}' | cut -d. -f1)\." | sort -V | tail -1)
+          test -n "$ver" || { echo "::error::no ${{ matrix.sdk }} SDK found"; exit 1; }
+          echo "HELPER_TEST_SDK=$ver" >> "$GITHUB_ENV"
+      - name: Core tests
+        run: dotnet test helper/Core.Tests -v q
+      - name: Helper tests
+        env:
+          HELPER_TEST_TFM: ${{ matrix.tfm }}
+        run: dotnet test helper/Helper.Tests -v q
+
+  # One stable check name for branch protection: matrix job names change with the matrix.
+  helper-tests-result:
+    needs: helper-tests
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: All helper test legs passed
+        run: test "${{ needs.helper-tests.result }}" = "success"
+
   # Every successful build on main is published as an EAP pre-release (GitHub only, NOT the
   # Marketplace) so the team can download the zip and install it in Rider for testing. The plugin
   # version is <VERSION>-eap.<yyyyMMdd>.<run> (VERSION = main's target, ahead of the last release),
   # so the EAP is higher than the released build and installs over it in Rider. The release notes
   # name the target version and list the PRs since the last stable tag.
   eap:
-    needs: build
+    needs: [build, helper-tests]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -86,6 +165,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            6.0.x
+            8.0.x
+            10.0.x
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6

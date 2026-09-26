@@ -1,14 +1,14 @@
 # Contributing
 
-Thanks for your interest in **dotnet outdated GUI**! Contributions are welcome.
+Thanks for your interest in **NuGet (Extended)**! Contributions are welcome.
 
 ## Prerequisites
 
 - JetBrains Rider **2026.1** (build 261) installed at `/Applications/Rider.app` (the build
   compiles against the local install).
 - A JDK capable of `--release 21` (the repo builds on JDK 22; JDK 21 also works).
-- The [`dotnet-outdated`](https://github.com/dotnet-outdated/dotnet-outdated) CLI for manual
-  testing — see its [installation instructions](https://github.com/dotnet-outdated/dotnet-outdated#installation).
+- The .NET SDK (6 or later): it builds and tests the bundled engine in `helper/`
+  (`dotnet test helper/Core.Tests && dotnet test helper/Helper.Tests`).
 
 ## Build & test
 
@@ -54,7 +54,7 @@ Releases are cut from the **`release`** branch, not `main`:
 ## Reporting issues
 
 Use the issue templates. Include your Rider version, `dotnet --version`,
-`dotnet outdated --version`, and steps to reproduce.
+the plugin version, and steps to reproduce.
 
 ## License
 

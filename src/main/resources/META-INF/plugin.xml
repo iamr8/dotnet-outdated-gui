@@ -1,33 +1,32 @@
 <idea-plugin>
     <id>com.github.iamr8.dotnetoutdated</id>
-    <name>dotnet outdated GUI</name>
+    <name>NuGet (Extended)</name>
     <vendor url="https://github.com/iamr8" email="arash.shabbeh@gmail.com">iamr8</vendor>
 
     <description><![CDATA[
-        <p>Keep a solution's NuGet packages up to date without leaving Rider. <b>dotnet outdated GUI</b>
-        wraps the <a href="https://github.com/dotnet-outdated/dotnet-outdated">dotnet-outdated</a> CLI in a
-        tool window: list every package, check for updates on demand, and upgrade the ones you choose — in place.</p>
+        <p>Keep a solution's NuGet packages up to date without leaving Rider. <b>NuGet (Extended)</b> adds what
+        Rider's NuGet window does not do yet: solution-wide update checks and upgrades that keep your
+        <b>version ranges</b> and work with <b>Central Package Management</b>.</p>
 
-        <p>It handles the parts of real-world .NET solutions that trip other tools up:</p>
         <ul>
-          <li><b>Central Package Management</b> — updates the central <code>&lt;PackageVersion&gt;</code> in
-              <code>Directory.Packages.props</code> and leaves the versionless
-              <code>&lt;PackageReference&gt;</code> in each project untouched.</li>
-          <li><b>NuGet version ranges &amp; floating versions</b> — interval and floating notation
-              (<code>[1.0.0,2.0.0)</code>, <code>(,3.0.0]</code>, <code>3.*</code>) resolve to the concrete
-              current version instead of showing raw brackets.</li>
-          <li><b>Severity at a glance</b> — each available update is colored by NuGet / Semantic Versioning:
-              green for patch, yellow for minor, red for major or pre-release.</li>
+          <li><b>Version ranges stay ranges</b> - <code>[12.0.1,14.0.0)</code> upgrades to
+              <code>[13.0.4,14.0.0)</code>, not to a fixed version. The new version is the newest one inside the
+              range; a version above the upper bound is never offered.</li>
+          <li><b>Central Package Management</b> - updates the central <code>&lt;PackageVersion&gt;</code> in
+              <code>Directory.Packages.props</code> (or a <code>VersionOverride</code>) and leaves the versionless
+              <code>&lt;PackageReference&gt;</code> alone.</li>
+          <li><b>Versions in properties</b> - <code>Version="$(PollyVersion)"</code> updates the property; other
+              packages that share it are listed before anything changes.</li>
+          <li><b>Floating versions</b> (<code>3.*</code>) update through a restore, with no file edit.</li>
+          <li><b>Severity at a glance</b> - green for patch, yellow for minor, red for major or pre-release.</li>
         </ul>
 
-        <p>Packages are grouped by project and target framework. Pick the ones you want (checkboxes, or
-        multi-select + <b>Space</b>), type to search, and upgrade in place. Every <code>dotnet outdated</code>
-        argument — pre-release, version lock, transitive dependencies, filters, timeouts — is available under
-        <b>Settings &rarr; Tools &rarr; dotnet outdated GUI</b>.</p>
+        <p>Packages are grouped by project and target framework. Check the ones you want, see the plan, and
+        upgrade. One Undo reverts every file. Pre-release, version lock, maximum version, transitive packages
+        and filters are under <b>Settings &rarr; Tools &rarr; NuGet (Extended)</b>.</p>
 
-        <p>Complements Rider's built-in NuGet window with a fast, CLI-driven, solution-wide view of what's
-        outdated. Requires the <a href="https://github.com/dotnet-outdated/dotnet-outdated#installation">dotnet-outdated</a>
-        global tool; no known conflicts.</p>
+        <p>No extra tool to install: the plugin uses your .NET SDK's own MSBuild and NuGet (the .NET 6 SDK or
+        later), with your NuGet.config, package source mapping and credential providers.</p>
 
         <p>Source &amp; issues: <a href="https://github.com/iamr8/dotnet-outdated-gui">github.com/iamr8/dotnet-outdated-gui</a></p>
     ]]></description>
@@ -46,10 +45,10 @@
           Platform-provided (since 2023.3) — no third-party service, no extra dependency.
         -->
         <errorHandler implementation="com.intellij.diagnostic.JetBrainsMarketplaceErrorReportSubmitter"/>
-        <editorNotificationProvider implementation="com.github.iamr8.dotnetoutdated.ui.DotnetProjectNotificationProvider"/>
+        <editorNotificationProvider implementation="com.github.iamr8.nugetextended.ui.DotnetProjectNotificationProvider"/>
 
         <!-- Balloons for dotnet CLI / user-project failures (not plugin bugs). -->
-        <notificationGroup id="dotnet outdated GUI" displayType="BALLOON"/>
+        <notificationGroup id="NuGet (Extended)" displayType="BALLOON"/>
 
         <!--
           Marketplace Plugin Advertiser: Rider's dotnet dependency collector matches a project's
@@ -74,12 +73,18 @@
         <projectConfigurable
             parentId="tools"
             id="nuget.extended"
-            displayName="dotnet outdated GUI"
-            instance="com.github.iamr8.dotnetoutdated.settings.OutdatedConfigurable"/>
+            displayName="NuGet (Extended)"
+            instance="com.github.iamr8.nugetextended.settings.OutdatedConfigurable"/>
         <toolWindow
-            id="dotnet outdated GUI"
+            id="NuGet (Extended)"
             anchor="right"
-            icon="/icons/dotnetOutdated.svg"
-            factoryClass="com.github.iamr8.dotnetoutdated.ui.OutdatedToolWindowFactory"/>
+            icon="/icons/nugetExtended.svg"
+            factoryClass="com.github.iamr8.nugetextended.ui.OutdatedToolWindowFactory"/>
     </extensions>
+
+    <projectListeners>
+        <!-- Project, props, targets, global.json and NuGet.config changes -> the engine's cache. -->
+        <listener class="com.github.iamr8.nugetextended.engine.FileWatch"
+                  topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
+    </projectListeners>
 </idea-plugin>

@@ -1,19 +1,18 @@
-# dotnet outdated GUI — Rider plugin
+# NuGet (Extended) — Rider plugin
 
-A JetBrains Rider tool window for the [`dotnet-outdated`](https://github.com/dotnet-outdated/dotnet-outdated)
-CLI, built for **real-world .NET solutions** — first-class **Central Package Management**
-(`Directory.Packages.props`) and **NuGet version ranges / floating versions**
-(`[1.0.0,2.0.0)`, `(,3.0.0]`, `3.*`). List the NuGet packages of the open solution's projects,
-check for updates (colored by NuGet / SemVer severity), and upgrade the ones you pick — in place.
+A JetBrains Rider tool window that adds what Rider's NuGet window does not do yet: solution-wide
+update checks and upgrades that **keep your version ranges** (`[1.0.0,2.0.0)`, `(,3.0.0]`) and
+work with **Central Package Management** (`Directory.Packages.props`). Formerly *dotnet outdated
+GUI*. No extra tool to install: it uses your .NET SDK's own MSBuild and NuGet.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/iamr8/dotnet-outdated-gui/build.yml?branch=main&style=flat-square&label=build)](https://github.com/iamr8/dotnet-outdated-gui/actions/workflows/build.yml)
 [![CodeQL](https://img.shields.io/github/actions/workflow/status/iamr8/dotnet-outdated-gui/codeql.yml?branch=main&style=flat-square&label=codeql)](https://github.com/iamr8/dotnet-outdated-gui/actions/workflows/codeql.yml)
 [![Release](https://img.shields.io/github/v/release/iamr8/dotnet-outdated-gui?style=flat-square)](https://github.com/iamr8/dotnet-outdated-gui/releases)
 [![Last commit](https://img.shields.io/github/last-commit/iamr8/dotnet-outdated-gui?style=flat-square)](https://github.com/iamr8/dotnet-outdated-gui/commits/main)
 [![License: MIT](https://img.shields.io/github/license/iamr8/dotnet-outdated-gui?style=flat-square)](LICENSE)
-[![JetBrains Marketplace](https://img.shields.io/jetbrains/plugin/v/32989?style=flat-square&label=marketplace)](https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui)
-[![Downloads](https://img.shields.io/jetbrains/plugin/d/32989?style=flat-square&label=downloads)](https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui)
-[![Rating](https://img.shields.io/jetbrains/plugin/r/rating/32989?style=flat-square)](https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui/reviews)
+[![JetBrains Marketplace](https://img.shields.io/jetbrains/plugin/v/32989?style=flat-square&label=marketplace)](https://plugins.jetbrains.com/plugin/32989)
+[![Downloads](https://img.shields.io/jetbrains/plugin/d/32989?style=flat-square&label=downloads)](https://plugins.jetbrains.com/plugin/32989)
+[![Rating](https://img.shields.io/jetbrains/plugin/r/rating/32989?style=flat-square)](https://plugins.jetbrains.com/plugin/32989/reviews)
 
 ## Screenshot
 
@@ -21,27 +20,29 @@ check for updates (colored by NuGet / SemVer severity), and upgrade the ones you
 
 ## Features
 
-- **Central Package Management** — reads and updates the central version in
-  `Directory.Packages.props`, leaving the versionless `<PackageReference>` in each `.csproj` intact.
-- **NuGet version ranges & floating versions** — interval notation (`[1.0.0,2.0.0)`, `(,3.0.0]`,
-  `[1.2.3]`) and floating (`3.*`) are resolved to the concrete current version, not shown as raw brackets.
-- Lists NuGet packages per project / target framework (`ProjectName · netX` section headers).
-- Checks for updates via `dotnet outdated`; the new version is colored by **NuGet / SemVer**
-  severity — green = patch, yellow = minor, red = major / pre-release.
-- Per-row **checkboxes** (multi-select + <kbd>Space</kbd>) to pick packages, then upgrade in place.
-- **Speed search** — start typing to filter by package / project name.
-- Checks the **whole solution in one `dotnet outdated` call** by default (fast); a **Scope** picker
-  narrows it to a subset (parallel per-project scans). Handles `.shproj`.
-- **Settings** exposing every `dotnet outdated` argument (Settings | Tools | dotnet outdated GUI).
+- **Version ranges stay ranges** — `[12.0.1,14.0.0)` upgrades to `[13.0.4,14.0.0)`. The new
+  version is the newest one inside the range. A version above the upper bound is never offered;
+  turn on **Show versions outside the range** to see it (gray, not checkable).
+- **Central Package Management** — updates the central `<PackageVersion>` (or a `VersionOverride`)
+  and leaves the versionless `<PackageReference>` alone.
+- **Versions in properties** — `Version="$(PollyVersion)"` updates the property; packages that share
+  it are listed first.
+- **Floating versions** (`3.*`) update through a restore, with no file edit.
+- Packages per project / target framework (`ProjectName · netX` headers), colored by **NuGet /
+  SemVer** severity — green = patch, yellow = minor, red = major / pre-release.
+- **Checkboxes** (multi-select + <kbd>Space</kbd>), **speed search**, a **Scope** picker.
+- An **upgrade plan** before any change; one Undo reverts every file.
+- Uses your NuGet.config, package source mapping and credential providers (Azure Artifacts,
+  GitHub Packages, …).
 - Editor banner on `.csproj` / `Directory.Packages.props`; opt-in exception reporting straight to
   the JetBrains Marketplace (no third-party service).
 
 ## Install
 
-From the [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/32989-dotnet-outdated-gui):
+From the [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/32989):
 
 1. In Rider, open **Settings → Plugins → Marketplace**.
-2. Search for **dotnet outdated GUI**.
+2. Search for **NuGet (Extended)**.
 3. Click **Install**, then restart the IDE when prompted.
 
 Or grab a `.zip` from [Releases](https://github.com/iamr8/dotnet-outdated-gui/releases) and install via
@@ -59,66 +60,53 @@ Or grab a `.zip` from [Releases](https://github.com/iamr8/dotnet-outdated-gui/re
 
 ## Requirements
 
-- JetBrains Rider 2026.1 (build 261).
-- .NET SDK on `PATH`.
-- The [`dotnet-outdated`](https://github.com/dotnet-outdated/dotnet-outdated) CLI — see its
-  [installation instructions](https://github.com/dotnet-outdated/dotnet-outdated#installation).
+- JetBrains Rider 2024.3 or later.
+- The .NET 6 SDK or later. The solution's `global.json` picks the SDK.
 
 ## Using it
 
-1. Open the **dotnet outdated GUI** tool window (right dock). The first time it's shown it lazily
-   lists every package with its **current** version via `dotnet list package` — fast, offline,
-   no update check. **New Version is empty** until you check for updates.
-2. **Reload Packages** (↻) — re-list current packages (use after installing/removing a package
-   so the list isn't stale).
-3. **Scope** — the current open solution; check/uncheck which of its **loaded projects** to show.
-4. **Check for Updates** — runs `dotnet outdated` over the whole solution to fill **New Version**,
-   and colors the whole outdated row by severity (**red** major/pre-release, **yellow** minor,
-   **green** patch). By default only outdated packages are listed; turn on **List all packages** to
-   include up-to-date ones (`-utd`).
-5. **Check** the packages you want (checkbox per row; multi-select rows + <kbd>Space</kbd> toggles
-   them all), then **Update Selected** — runs `dotnet outdated -u -inc <pkg> …` and re-scans.
-   Up-to-date packages can't be checked. Start typing to **speed-search** by package/project name.
+1. Open the **NuGet (Extended)** tool window (right dock).
+2. **Check for Updates** — finds newer versions for the projects in **Scope** and colors them by
+   severity. Projects whose packages are out of date are restored first.
+3. **Check** the packages you want (checkbox per row; multi-select + <kbd>Space</kbd>), then
+   **Update Selected**. A dialog shows the plan: the files, other packages that share a version,
+   and anything skipped (with the reason). **Upgrade** edits the files, restores, and checks again.
+   **Undo** reverts the files.
+4. A package already at the newest version inside its range is up to date, so it is not listed. Turn
+   on **Show versions outside the range** to list it with the newer version (gray).
+5. **Reload Packages** (↻) lists every package, up to date or not, with no update check. It needs
+   **List all packages** in settings.
 
-Problems in your solution (missing tool, unrestored project, a package version that doesn't exist,
-non-zero exit) are shown as a **notification** with a short, actionable message and a **Copy Details**
-action carrying the full CLI output — they are not treated as plugin crashes. Genuine plugin
-exceptions go to the IDE's error reporter, which submits them (only if you choose to) to this
-plugin's **Exceptions** page on the JetBrains Marketplace.
+Problems in your solution (an unrestored project, a version that doesn't exist, a failing package
+source) show as a **notification** with a short message and **Copy Details** for the full output.
+They are not treated as plugin crashes. Real plugin exceptions go to the IDE's error reporter,
+which submits them (only if you choose to) to this plugin's **Exceptions** page on the JetBrains
+Marketplace.
 
-New-version colors follow **NuGet / Semantic Versioning** semantics (the CLI legend):
-**red** = major update or pre-release (possible breaking changes), **yellow** = minor
-(backwards-compatible features), **green** = patch (backwards-compatible fixes); up-to-date
-packages are uncolored.
+### Settings (⚙ toolbar → Settings | Tools | NuGet (Extended))
 
-### Settings (⚙ toolbar → Settings | Tools | dotnet outdated GUI)
+Settings are saved per project (`.idea/nuget-extended.xml`):
 
-Settings live in the standard JetBrains **Settings** dialog. **List all packages** is off by
-default — it lists every package via `dotnet list package` and can be a massive operation on
-large solutions; leave it off to work only with outdated packages. Every configurable
-`dotnet outdated` argument is exposed and persisted per project (`.idea/nuget-extended.xml`):
-
-- **Packages analyzed** — list up-to-date (`-utd`), auto-references (`-i`), transitive (`-t`) + depth (`-td`).
-- **Version policy** — pre-release (`-pre`) + label (`-prl`), version lock (`-vl`), maximum version (`-mv`), older-than days (`-ot`).
-- **Discovery** — recurse (`-r`), file-based apps (`-fba`), include/exclude name filters (`-inc`/`-exc`).
-- **Sources & reliability** — no-restore (`-n`), ignore failed sources (`-ifs`), idle timeout (`-it`), runtime (`-rt`), NuGet credential log level (`-ncll`).
-
-Safer-than-CLI defaults: `-ifs` on, `-it 300` (CLI default 120); `-utd` (List all packages) is off.
-Flags are only passed when they differ from the CLI default, keeping the invocation minimal.
-
-> Note: `dotnet outdated`'s `-inc` filter matches package names by *substring*, so upgrading
-> `Microsoft.EntityFrameworkCore` may also upgrade `…EntityFrameworkCore.Design`. The tree
-> always re-scans after an upgrade to show the true resulting state.
+- **Packages analyzed** — list all packages (off by default), versions outside the range (off by
+  default), auto-referenced packages, transitive
+  packages + depth (an upgrade adds a direct reference).
+- **Version policy** — pre-release + label, version lock, maximum version (never above a range's
+  upper bound), only versions older than N days.
+- **Discovery** — projects in subfolders when no solution is open, file-based apps
+  (`#:package`, .NET 10 SDK), show-only / hide name filters.
+- **Sources & reliability** — never run `dotnet restore`, ignore failed sources, engine timeout,
+  runtime identifier, NuGet credential log level.
 
 ## Building
 
-The build runs on JDK 22 (`gradle.properties` pins `org.gradle.java.home`) and compiles against
-the locally installed Rider at `/Applications/Rider.app`.
+The build needs a JDK (see `gradle.properties`) and the .NET SDK (6 or later) for the bundled
+engine in `helper/`.
 
 ```bash
-./gradlew test          # unit tests (pure logic: command builder, JSON parser, severity, target discovery)
-./gradlew buildPlugin    # produces build/distributions/dotnet-outdated-rider-<version>.zip
-./gradlew runIde         # launches a sandbox Rider with the plugin for manual testing
+dotnet test helper/Core.Tests && dotnet test helper/Helper.Tests   # engine tests
+./gradlew test          # plugin unit tests
+./gradlew buildPlugin    # build/distributions/nuget-extended-rider-<version>.zip (engine included)
+./gradlew runIde         # sandbox Rider with the plugin
 ```
 
 Install the built zip via **Settings → Plugins → ⚙ → Install Plugin from Disk…**
@@ -126,9 +114,11 @@ Install the built zip via **Settings → Plugins → ⚙ → Install Plugin from
 ## Layout
 
 ```
-cli/    OutdatedCommand (pure arg builders), DotnetOutdatedRunner (process), SolutionTargets, DotnetLocator,
-        CliFailures (CLI output → short user-facing message)
-model/  OutdatedReport (JSON schema), Severity (severity → color legend)
-parse/  OutdatedReportParser (JSON → model)
-ui/     tool window factory, panel (toolbar + background scan/upgrade), tree table, row model
+helper/   .NET engine (net6.0): MSBuild evaluation, assets, NuGet feeds, target selection, upgrade plan
+engine/   helper process, JSON-lines client, file watcher
+edit/     applies the engine's edits to IDE documents (one undo step)
+cli/      restore runner, scan scope, solution parsing, dotnet locator, failure messages
+model/    severity -> color
+settings/ options, settings page
+ui/       tool window, panel, grouped list, rows, confirm text
 ```

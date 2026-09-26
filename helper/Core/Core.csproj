@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>NuGetExtended.Core</RootNamespace>
+    <AssemblyName>NuGetExtended.Core</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Compile-only: at run time the SDK's own NuGet assemblies load (see spec, Facts). -->
+    <PackageReference Include="NuGet.Versioning" Version="6.0.0" ExcludeAssets="runtime" />
+    <PackageReference Include="NuGet.Frameworks" Version="6.0.0" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>

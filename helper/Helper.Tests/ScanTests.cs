@@ -1,0 +1,303 @@
+using System.Diagnostics;
+using System.Net;
+using System.Text.Json;
+using NuGetExtended.Helper.Tests.Fixtures;
+using Xunit;
+
+namespace NuGetExtended.Helper.Tests;
+
+public class ScanTests
+{
+    private static (string dir, string project) Setup()
+    {
+        var dir = FixtureSolution.NewDir();
+        var feed = FixtureFeed.Create(dir, ("Polly", new[] { "7.0.0", "7.2.4", "8.8.0" }), ("Serilog", new[] { "0.1.6", "2.12.0", "3.0.0", "4.4.0" }));
+        FixtureSolution.WriteNuGetConfig(dir, ("local", feed));
+        FixtureSolution.Write(dir, "P/P.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFramework>{FixtureSolution.Tfm}</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include=""Polly"" Version=""[7.0.0,8.0.0)"" />
+    <PackageReference Include=""Serilog"" Version=""(,3.0.0]"" />
+  </ItemGroup>
+</Project>");
+        var project = Path.Combine(dir, "P/P.csproj");
+        FixtureSolution.Restore(project);
+        return (dir, project);
+    }
+
+    private static JsonElement Scan(HelperProcess h, string dir, IEnumerable<string> projects, object? options = null) =>
+        h.Request("scan", new { solutionDir = dir, projects, options = options ?? new { } }).GetProperty("result");
+
+    private static JsonElement Row(JsonElement result, string id) =>
+        result.GetProperty("projects")[0].GetProperty("frameworks")[0].GetProperty("packages").EnumerateArray()
+            .Single(p => p.GetProperty("id").GetString() == id);
+
+    [Fact]
+    public void ScanRespectsRangesAndUpperOnly()
+    {
+        var (dir, project) = Setup();
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project });
+
+        Assert.Equal("7.2.4", Row(r, "Polly").GetProperty("target").GetString());
+        Assert.Equal("8.8.0", Row(r, "Polly").GetProperty("capped").GetString());
+        Assert.Equal("3.0.0", Row(r, "Serilog").GetProperty("target").GetString());
+        Assert.Empty(r.GetProperty("stale").EnumerateArray());
+    }
+
+    [Fact]
+    public void OfflineListingHasNoTargets()
+    {
+        var (dir, project) = Setup();
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project }, new { checkUpdates = false, includeUpToDate = true });
+
+        Assert.Equal(JsonValueKind.Null, Row(r, "Polly").GetProperty("target").ValueKind);
+        Assert.Equal("7.0.0", Row(r, "Polly").GetProperty("resolved").GetString());
+    }
+
+    [Fact]
+    public void StaleProjectIsReportedNotScanned()
+    {
+        var (dir, project) = Setup();
+        // A real edit, not just a touched file time: A7's semantic stale check treats a no-op
+        // restore (file time changed, content the same) as not stale, by design.
+        var content = File.ReadAllText(project).Replace("[7.0.0,8.0.0)", "[7.0.0,9.0.0)");
+        File.WriteAllText(project, content);
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project });
+
+        Assert.Equal(project, r.GetProperty("stale")[0].GetString());
+        Assert.Empty(r.GetProperty("projects").EnumerateArray());
+    }
+
+    [Fact]
+    public void MissingProjectsFieldIsAUserErrorNotABug()
+    {
+        var dir = FixtureSolution.NewDir();
+        using var h = HelperProcess.Start(dir);
+
+        var r = h.Request("scan", new { solutionDir = dir });
+
+        Assert.Equal("user", r.GetProperty("error").GetProperty("kind").GetString());
+    }
+
+    [Fact]
+    public void MissingOptionsFieldDefaultsInsteadOfFailing()
+    {
+        var (dir, project) = Setup();
+        using var h = HelperProcess.Start(dir);
+
+        var r = h.Request("scan", new { solutionDir = dir, projects = new[] { project } });
+
+        Assert.Equal("7.2.4", Row(r.GetProperty("result"), "Polly").GetProperty("target").GetString());
+    }
+
+    [Fact]
+    public void MissingPathsFieldIsAUserErrorNotABug()
+    {
+        var dir = FixtureSolution.NewDir();
+        using var h = HelperProcess.Start(dir);
+
+        var r = h.Request("invalidate", new { });
+
+        Assert.Equal("user", r.GetProperty("error").GetProperty("kind").GetString());
+    }
+
+    [Fact]
+    public void BadNuGetConfigIsAUserErrorNotABug()
+    {
+        var (dir, project) = Setup();
+        // Broken XML (an unclosed attribute): Settings.LoadDefaultSettings throws
+        // NuGetConfigurationException for this, verified separately by reflection against the dll.
+        File.WriteAllText(Path.Combine(dir, "NuGet.config"), @"<?xml version=""1.0"" encoding=""utf-8""?>
+<configuration>
+  <packageSources><add key=""x""</packageSources>
+</configuration>");
+        using var h = HelperProcess.Start(dir);
+
+        var r = h.Request("scan", new { solutionDir = dir, projects = new[] { project }, options = new { } });
+
+        Assert.Equal("user", r.GetProperty("error").GetProperty("kind").GetString());
+    }
+
+    [Fact]
+    public void FailedSourceMarksRowInsteadOfHidingIt()
+    {
+        using var listener = new HttpListener();
+        var port = FreePort();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
+        _ = Task.Run(async () =>
+        {
+            while (listener.IsListening)
+            {
+                HttpListenerContext ctx;
+                try { ctx = await listener.GetContextAsync(); } catch { break; }
+                ctx.Response.StatusCode = 401;
+                ctx.Response.Close();
+            }
+        });
+
+        var dir = FixtureSolution.NewDir();
+        // No newer version exists in the working feed: Target stays null for reasons unrelated to
+        // the failed source, so the row would otherwise vanish under the up-to-date filter.
+        var feed = FixtureFeed.Create(dir, ("Widget", new[] { "1.0.0" }));
+        FixtureSolution.WriteNuGetConfig(dir, ("local", feed));
+        FixtureSolution.Write(dir, "P/P.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFramework>{FixtureSolution.Tfm}</TargetFramework></PropertyGroup>
+  <ItemGroup><PackageReference Include=""Widget"" Version=""1.0.0"" /></ItemGroup>
+</Project>");
+        var project = Path.Combine(dir, "P/P.csproj");
+        FixtureSolution.Restore(project); // against the local feed only, so restore succeeds
+
+        // The 401 source is added after restore: the stale check is semantic (requested range text
+        // vs. the assets file), not source-aware, so this alone does not make the project stale.
+        FixtureSolution.WriteNuGetConfig(dir, ("local", feed), ("private", $"http://127.0.0.1:{port}/v3/index.json"));
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project });
+
+        var row = Row(r, "Widget");
+        Assert.Equal(JsonValueKind.Null, row.GetProperty("target").ValueKind);
+        Assert.Contains("sign-in needed", row.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public void ProjectEvaluationFailureAppearsInFailuresOthersStillScan()
+    {
+        var (dir, project) = Setup();
+        FixtureSolution.Write(dir, "Bad/Bad.csproj", @"<Project Sdk=""Microsoft.NET.Sdk""><PropertyGroup>"); // malformed: unclosed elements
+        var badProject = Path.Combine(dir, "Bad/Bad.csproj");
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project, badProject });
+
+        var failure = r.GetProperty("failures").EnumerateArray().Single();
+        Assert.Equal("Bad", failure.GetProperty("project").GetString());
+        Assert.Equal("7.2.4", Row(r, "Polly").GetProperty("target").GetString()); // the good project still scanned
+    }
+
+    [Fact]
+    public void InvalidateMakesTheNextScanSeeAnEditedProject()
+    {
+        var (dir, project) = Setup();
+        using var h = HelperProcess.Start(dir);
+        var r1 = Scan(h, dir, new[] { project });
+        Assert.Empty(r1.GetProperty("stale").EnumerateArray());
+
+        // ProjectEvaluator caches by path: without invalidating, this edit would not be seen.
+        var content = File.ReadAllText(project).Replace("[7.0.0,8.0.0)", "[7.0.0,9.0.0)");
+        File.WriteAllText(project, content);
+        var inv = h.Request("invalidate", new { paths = new[] { project } }).GetProperty("result");
+        Assert.Equal(1, inv.GetProperty("invalidated").GetInt32());
+
+        var r2 = Scan(h, dir, new[] { project });
+        Assert.Equal(project, r2.GetProperty("stale")[0].GetString());
+    }
+
+    [Fact]
+    public void EvaluationSendsOneProgressEventPerProject()
+    {
+        // A cold, large solution must not look idle to the plugin's timeout while it evaluates.
+        var (dir, project) = Setup();
+        FixtureSolution.Write(dir, "Q/Q.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFramework>{FixtureSolution.Tfm}</TargetFramework></PropertyGroup>
+</Project>");
+        using var h = HelperProcess.Start(dir);
+        var events = new List<JsonElement>();
+
+        var id = h.Send("scan", new { solutionDir = dir, projects = new[] { project, Path.Combine(dir, "Q/Q.csproj") }, options = new { checkUpdates = false } });
+        h.ReadResponse(id, events: events);
+        // Progress events are posted to the thread pool and can trail the response a little: one
+        // more round trip lets any late one arrive.
+        h.ReadResponse(h.Send("invalidate", new { paths = Array.Empty<string>() }), events: events, eventsId: id);
+
+        var texts = events.Select(e => e.GetProperty("data").GetProperty("text").GetString()!).ToList();
+        Assert.Equal(2, texts.Count(t => t.StartsWith("Evaluated ")));
+    }
+
+    [Fact]
+    public void DotnetHostPathIsTheDotnetInUseEvenWhenInherited()
+    {
+        // MSBuild sees environment variables as properties, so the evaluated Version shows the value.
+        var dir = FixtureSolution.NewDir();
+        FixtureSolution.Write(dir, "P/P.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFramework>{FixtureSolution.Tfm}</TargetFramework></PropertyGroup>
+  <ItemGroup><PackageReference Include=""X"" Version=""$(DOTNET_HOST_PATH)"" /></ItemGroup>
+</Project>");
+        using var h = HelperProcess.Start(dir, new Dictionary<string, string> { ["DOTNET_HOST_PATH"] = "/not/the/dotnet" });
+
+        var r = h.Request("evaluate", new { path = Path.Combine(dir, "P/P.csproj"), runtime = "" }).GetProperty("result");
+
+        var host = r.GetProperty("frameworks")[0].GetProperty("items")[0].GetProperty("version").GetString()!;
+        Assert.NotEqual("/not/the/dotnet", host);
+        Assert.True(File.Exists(host), host);
+        Assert.StartsWith("dotnet", Path.GetFileName(host));
+    }
+
+    private static int FreePort()
+    {
+        var l = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        l.Start();
+        var port = ((IPEndPoint)l.LocalEndpoint).Port;
+        l.Stop();
+        return port;
+    }
+
+    [Fact]
+    public void LargeSolutionIsFastWhenWarmAndMemoryIsStable()
+    {
+        var dir = FixtureSolution.NewDir();
+        var feed = FixtureFeed.Create(dir, ("Polly", new[] { "7.0.0", "7.2.4" }));
+        FixtureSolution.WriteNuGetConfig(dir, ("local", feed));
+        var projects = new List<string>();
+        // Keep <TargetFrameworks> (plural) even when it collapses to one TFM (SDK 6, where
+        // FixtureSolution.Tfm is net6.0 too), so the project still goes through multi-target
+        // evaluation.
+        var tfms = string.Join(";", new[] { "net6.0", FixtureSolution.Tfm }.Distinct());
+        for (var i = 0; i < 60; i++)
+        {
+            FixtureSolution.Write(dir, $"P{i}/P{i}.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFrameworks>{tfms}</TargetFrameworks></PropertyGroup>
+  <ItemGroup><PackageReference Include=""Polly"" Version=""7.0.0"" /></ItemGroup>
+</Project>");
+            projects.Add(Path.Combine(dir, $"P{i}/P{i}.csproj"));
+        }
+        // Run from dir, not the test process's own cwd: dotnet picks the SDK from the working
+        // directory's global.json, and this must be the same pinned SDK Restore(sln) below uses -
+        // otherwise an unpinned default SDK can create a newer solution format (.slnx) the pinned
+        // SDK under test cannot restore.
+        RunExpectSuccess("dotnet", $"new sln -o \"{dir}\" -n All", dir);
+        var sln = Directory.GetFiles(dir, "All.sln*").Single();
+        RunExpectSuccess("dotnet", $"sln \"{sln}\" add {string.Join(" ", projects.Select(p => "\"" + p + "\""))}", dir);
+        FixtureSolution.Restore(sln);
+        using var h = HelperProcess.Start(dir);
+
+        Scan(h, dir, projects); // cold
+        var sw = Stopwatch.StartNew();
+        var warm = Scan(h, dir, projects);
+        sw.Stop();
+        var mem1 = h.Request("memory", new { }).GetProperty("result").GetProperty("bytes").GetInt64();
+        Scan(h, dir, projects);
+        var mem2 = h.Request("memory", new { }).GetProperty("result").GetProperty("bytes").GetInt64();
+
+        Assert.Equal(60, warm.GetProperty("projects").GetArrayLength());
+        Assert.True(sw.ElapsedMilliseconds < 1000, $"warm scan took {sw.ElapsedMilliseconds} ms");
+        Assert.True(mem2 < mem1 * 1.2, $"memory grew from {mem1} to {mem2}");
+    }
+
+    private static void RunExpectSuccess(string exe, string args, string? workingDirectory = null)
+    {
+        var psi = new ProcessStartInfo(exe, args) { RedirectStandardOutput = true, RedirectStandardError = true };
+        if (workingDirectory != null) psi.WorkingDirectory = workingDirectory;
+        FixtureSolution.ScrubMsBuildEnv(psi);
+        using var p = Process.Start(psi)!;
+        var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+        p.WaitForExit();
+        Assert.True(p.ExitCode == 0, $"'{exe} {args}' failed ({p.ExitCode}):\n{output}");
+    }
+}
