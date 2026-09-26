@@ -32,12 +32,6 @@ class CliFailuresTest {
     }
 
     @Test
-    fun `missing dotnet-outdated tool suggests the install command`() {
-        val message = CliFailures.describe("No executable found matching command \"dotnet-outdated\"", "")
-        assertEquals("dotnet-outdated tool not found. Install: dotnet tool install -g dotnet-outdated-tool", message)
-    }
-
-    @Test
     fun `blank output falls back to the dotnet-not-runnable hint`() {
         assertEquals(
             "Could not run dotnet. Ensure the .NET SDK is installed and on PATH.",

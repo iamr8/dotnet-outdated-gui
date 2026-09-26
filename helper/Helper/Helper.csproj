@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <RollForward>LatestMajor</RollForward>
+    <RootNamespace>NuGetExtended.Helper</RootNamespace>
+    <AssemblyName>Helper</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Core/Core.csproj" />
+    <PackageReference Include="Microsoft.Build.Locator" Version="1.6.10" />
+    <PackageReference Include="Microsoft.Build" Version="17.0.0" ExcludeAssets="runtime" />
+    <!-- NU1903: the advisories are for NuGet.Protocol code that runs; this one is compile-only (the SDK's copy loads). -->
+    <PackageReference Include="NuGet.Protocol" Version="6.0.0" ExcludeAssets="runtime" NoWarn="NU1903" />
+    <PackageReference Include="NuGet.Credentials" Version="6.0.0" ExcludeAssets="runtime" />
+    <PackageReference Include="NuGet.ProjectModel" Version="6.0.0" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>

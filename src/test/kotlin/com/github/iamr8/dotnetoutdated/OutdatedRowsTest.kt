@@ -1,108 +1,104 @@
 package com.github.iamr8.dotnetoutdated
 
-import com.github.iamr8.dotnetoutdated.model.ListFramework
-import com.github.iamr8.dotnetoutdated.model.ListPackage
-import com.github.iamr8.dotnetoutdated.model.ListPackagesReport
-import com.github.iamr8.dotnetoutdated.model.ListProject
-import com.github.iamr8.dotnetoutdated.model.OutdatedReport
-import com.github.iamr8.dotnetoutdated.model.ReportDependency
-import com.github.iamr8.dotnetoutdated.model.ReportFramework
-import com.github.iamr8.dotnetoutdated.model.ReportProject
+import com.github.iamr8.dotnetoutdated.engine.FrameworkRows
+import com.github.iamr8.dotnetoutdated.engine.PackageRow
+import com.github.iamr8.dotnetoutdated.engine.ProjectRows
+import com.github.iamr8.dotnetoutdated.engine.ScanResult
+import com.github.iamr8.dotnetoutdated.model.SeverityColor
 import com.github.iamr8.dotnetoutdated.ui.OutdatedRows
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OutdatedRowsTest {
 
-    private fun dep(name: String, resolved: String, latest: String, severity: String) =
-        ReportDependency(name, resolved, latest, severity)
+    private fun result(vararg rows: PackageRow) =
+        ScanResult(projects = listOf(ProjectRows("/r/A/A.csproj", "A", listOf(FrameworkRows("net8.0", rows.toList())))))
 
     @Test
-    fun eachTargetFrameworkBecomesItsOwnSection() {
-        val report = OutdatedReport(
-            listOf(
-                ReportProject(
-                    name = "App",
-                    filePath = "/repo/App.csproj",
-                    targetFrameworks = listOf(
-                        ReportFramework("net8.0", listOf(dep("Foo", "1.0.0", "2.0.0", "Major"))),
-                        ReportFramework("net9.0", listOf(dep("Foo", "1.0.0", "2.0.0", "Major"))),
-                    ),
-                ),
-            ),
-        )
-        val sections = OutdatedRows.build(report, "/repo/App.sln")
-        assertEquals(2, sections.size)
-        assertEquals(setOf("net8.0", "net9.0"), sections.map { it.framework }.toSet())
-        assertTrue(sections.all { it.projectName == "App" && it.upgradeTarget == "/repo/App.csproj" })
+    fun targetRowIsCheckableAndColoredBySeverity() {
+        val dep = OutdatedRows.toDep(PackageRow("Polly", "[7.0.0,8.0.0)", "7.0.0", "7.2.4", "Minor", capped = "8.8.0"))
+        assertTrue(dep.outdated)
+        assertEquals("7.2.4", dep.newVersion)
+        assertEquals(SeverityColor.YELLOW, dep.color)
+        assertEquals("8.8.0 is newer but outside [7.0.0,8.0.0).", dep.note)
     }
 
     @Test
-    fun duplicatePackagesInAFrameworkAreDeduped() {
-        val report = OutdatedReport(
-            listOf(
-                ReportProject(
-                    "App", "/repo/App.csproj",
-                    listOf(
-                        ReportFramework(
-                            "net8.0",
-                            listOf(
-                                dep("Foo", "1.0.0", "2.0.0", "Major"),
-                                dep("Foo", "1.0.0", "2.0.0", "Major"),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        )
-        val section = OutdatedRows.build(report, "/x").single()
-        assertEquals(1, section.deps.size)
+    fun requestedTextIsTrimmedForDisplay() {
+        // A <Version> child element keeps the file's line breaks and indent in its raw text.
+        val dep = OutdatedRows.toDep(PackageRow("Polly", "\r\n        7.1.0\r\n      ", null, "7.2.4", "Minor", capped = "8.8.0"))
+        assertEquals("7.1.0", dep.requested)
+        assertEquals("7.1.0", dep.current)
+        assertEquals("8.8.0 is newer but outside 7.1.0.", dep.note)
     }
 
     @Test
-    fun upToDatePackageIsIncludedButNotOutdated() {
-        val report = OutdatedReport(
-            listOf(
-                ReportProject(
-                    "App", "/repo/App.csproj",
-                    listOf(
-                        ReportFramework(
-                            "net8.0",
-                            listOf(
-                                dep("Current", "1.2.3", "1.2.3", "None"),
-                                dep("Stale", "1.0.0", "1.1.0", "Minor"),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        )
-        val deps = OutdatedRows.build(report, "/x").single().deps.associateBy { it.name }
-        assertFalse(deps.getValue("Current").outdated)
-        assertEquals("", deps.getValue("Current").newVersion)
-        assertTrue(deps.getValue("Stale").outdated)
-        assertEquals("1.1.0", deps.getValue("Stale").newVersion)
+    fun cappedOnlyRowIsGrayAndNotCheckable() {
+        val dep = OutdatedRows.toDep(PackageRow("Polly", "[7.2.4,8.0.0)", "7.2.4", null, "None", capped = "8.8.0", reason = "capped by range"))
+        assertFalse(dep.outdated)
+        assertEquals("8.8.0", dep.newVersion)
+        assertEquals(SeverityColor.NONE, dep.color)
+        assertEquals("capped by range: [7.2.4,8.0.0)", dep.note)
     }
 
     @Test
-    fun listingBuildsSectionPerFramework() {
-        val report = ListPackagesReport(
-            listOf(
-                ListProject(
-                    path = "/repo/App.csproj",
-                    frameworks = listOf(
-                        ListFramework("net8.0", topLevelPackages = listOf(ListPackage("Foo", "1.0.0", "1.0.0"))),
-                        ListFramework("net9.0", topLevelPackages = listOf(ListPackage("Foo", "1.0.0", "1.0.0"))),
-                    ),
-                ),
-            ),
-        )
-        val sections = OutdatedRows.buildFromListing(report, "/repo/App.sln")
-        assertEquals(2, sections.size)
-        assertTrue(sections.all { it.projectName == "App" })
-        assertEquals("1.0.0", sections.first().deps.single().current)
-        assertFalse(sections.first().deps.single().outdated)
+    fun restoreOnlyRowIsCheckable() {
+        val dep = OutdatedRows.toDep(PackageRow("Serilog", "2.*", "2.10.0", "2.14.1", "Minor", restoreOnly = true))
+        assertTrue(dep.outdated)
+        assertTrue(dep.restoreOnly)
+        assertEquals("Floating version 2.*: restore picks 2.14.1.", dep.note)
+    }
+
+    @Test
+    fun upToDateRowHasNoNewVersion() {
+        val dep = OutdatedRows.toDep(PackageRow("Dapper", "2.1.0", "2.1.0"))
+        assertFalse(dep.outdated)
+        assertEquals("", dep.newVersion)
+        assertNull(dep.note)
+    }
+
+    @Test
+    fun currentFallsBackToRequestedWhenNotResolved() {
+        assertEquals("1.2.3", OutdatedRows.toDep(PackageRow("X", "1.2.3", null)).current)
+    }
+
+    @Test
+    fun sectionsCarryProjectPathAndFramework() {
+        val sections = OutdatedRows.fromScan(result(PackageRow("B", "1.0.0", "1.0.0"), PackageRow("a", "1.0.0", "1.0.0")), emptyList(), emptyList())
+        val s = sections.single()
+        assertEquals("A", s.projectName)
+        assertEquals("net8.0", s.framework)
+        assertEquals("/r/A/A.csproj", s.upgradeTarget)
+        assertEquals(listOf("a", "B"), s.deps.map { it.name })
+    }
+
+    @Test
+    fun signInNeededReasonShowsShortGrayMarker() {
+        val dep = OutdatedRows.toDep(PackageRow("Polly", "1.0.0", "1.0.0", reason = "sign-in needed for source 'MyFeed'"))
+        assertFalse(dep.outdated)
+        assertEquals("sign-in needed", dep.newVersion)
+        assertEquals(SeverityColor.NONE, dep.color)
+        assertEquals("sign-in needed for source 'MyFeed'", dep.note)
+    }
+
+    @Test
+    fun sourceFailedReasonShowsShortGrayMarker() {
+        val dep = OutdatedRows.toDep(PackageRow("Polly", "1.0.0", "1.0.0", reason = "package source 'MyFeed' failed"))
+        assertFalse(dep.outdated)
+        assertEquals("source failed", dep.newVersion)
+        assertEquals(SeverityColor.NONE, dep.color)
+        assertEquals("package source 'MyFeed' failed", dep.note)
+    }
+
+    @Test
+    fun includeAndExcludeFiltersAreCaseInsensitiveSubstrings() {
+        assertTrue(OutdatedRows.keep("Microsoft.EntityFrameworkCore", listOf("entity"), emptyList()))
+        assertFalse(OutdatedRows.keep("Polly", listOf("entity"), emptyList()))
+        assertFalse(OutdatedRows.keep("Microsoft.EntityFrameworkCore.Design", emptyList(), listOf("DESIGN")))
+        val sections = OutdatedRows.fromScan(result(PackageRow("Polly", "1.0.0", "1.0.0")), emptyList(), listOf("poll"))
+        assertTrue(sections.isEmpty())
     }
 }

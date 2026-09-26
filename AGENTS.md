@@ -1,15 +1,16 @@
-# AGENTS.md — dotnet outdated GUI
+# AGENTS.md — NuGet (Extended)
 
 Context, conventions, and rules for anyone (human or AI) working in this repo.
 
 ## What this is
 
-A **JetBrains Rider plugin** that wraps the [`dotnet-outdated`](https://github.com/dotnet-outdated/dotnet-outdated)
-CLI in a tool window: list NuGet packages of the open solution's projects, check for updates,
-and upgrade in place.
+A **JetBrains Rider plugin** (formerly *dotnet outdated GUI*) that checks the open solution's
+NuGet packages for updates and upgrades them in place, keeping version ranges and Central Package
+Management intact. A bundled .NET engine (`helper/`) does the work with the user's own SDK
+MSBuild and NuGet.
 
 - Repo: https://github.com/iamr8/dotnet-outdated-gui
-- Plugin id: `com.github.iamr8.dotnetoutdated` · name: **dotnet outdated GUI**
+- Plugin id: `com.github.iamr8.dotnetoutdated` (never changes) · name: **NuGet (Extended)** (`PluginText.NAME`)
 - Base package / Gradle group: `com.github.iamr8`
 
 ## Toolchain & build
@@ -22,8 +23,10 @@ and upgrade in place.
 - **JDK**: platform-261 bytecode needs `--release 21`. The build runs on **JDK 22** via
   `org.gradle.java.home` in `gradle.properties` (machine-specific path). A plain `java` of 11 is
   too old to launch Gradle. In CI, `-Dorg.gradle.java.home="$JAVA_HOME"` overrides it (setup-java 21).
+- **.NET SDK** (6 or later) builds the engine: `buildHelper` (`dotnet publish helper/Helper`) runs
+  before `prepareSandbox`, and its output ships in the plugin's `helper/` folder.
 - **Version**: single source of truth is the **`VERSION`** file (no extension); `build.gradle.kts`
-  reads it into the plugin version. Keep it at **0.1.0 until the first Marketplace publish**.
+  reads it into the plugin version. It is the version in progress (see Conventions).
 - `until-build` is intentionally unset (forward IDE compatibility / Marketplace-friendly).
 
 ### Common commands
@@ -35,42 +38,44 @@ export JAVA_HOME=<jdk-22-home>
 ./gradlew runIde                                  # sandbox Rider to drive the UI
 # install a local build into the real Rider for manual testing:
 rm -rf "$HOME/Library/Application Support/JetBrains/Rider2026.1/plugins/dotnet-outdated-rider"
-unzip -q build/distributions/dotnet-outdated-rider-0.1.0.zip -d "$HOME/Library/Application Support/JetBrains/Rider2026.1/plugins"
+unzip -q build/distributions/dotnet-outdated-rider-$(cat VERSION).zip -d "$HOME/Library/Application Support/JetBrains/Rider2026.1/plugins"
 ```
 
 ## Architecture
 
 ```
-cli/     OutdatedCommand / ListPackagesCommand (pure arg builders), DotnetOutdatedRunner (process),
-         SolutionModel (.sln/.slnx parse), DotnetLocator, CliFailures (CLI output -> user message)
-model/   OutdatedReport / ListPackagesReport (Gson DTOs), Severity (severity -> color)
-parse/   Gson JSON -> model
-settings/ OutdatedOptions (persisted), OutdatedOptionsService, OutdatedConfigurable (Settings page)
-ui/      OutdatedToolWindowFactory, OutdatedPanel (toolbar + phases), PackageListView (grouped list),
-         DotnetProjectNotificationProvider (editor banner)
+helper/   .NET engine (net6.0, RollForward=LatestMajor): Protocol/Server (JSON lines), SdkHost (MSBuildLocator),
+          ProjectEvaluator, AssetsReader, RestoreState, FeedService, TargetSelector, RangeText, EditPlanner
+engine/   HelperProcess, HelperClient, HelperService (one helper per solution), FileWatch, Protocol DTOs
+edit/     EditText (pure: locate edits), EditApplier (documents, one undo step)
+cli/      DotnetRunner + RestoreCommand, ScanPlan, SolutionModel, DotnetLocator, CliFailures
+model/    Severity (severity -> color)
+settings/ OutdatedOptions (persisted), OutdatedOptionsService, OutdatedConfigurable
+ui/       OutdatedToolWindowFactory, OutdatedPanel, PackageListView, OutdatedRows, UpgradeSummary,
+          DotnetProjectNotificationProvider
 ```
 
 ### Key behaviors
 
-- **Core value prop (lead with this in all user-facing copy)**: works with **Central Package
-  Management** (`Directory.Packages.props` — upgrades the central `<PackageVersion>`, leaves the
-  versionless `<PackageReference>` intact) and **NuGet version ranges / floating versions**
-  (`[1.0.0,2.0.0)`, `(,3.0.0]`, `3.*` — surfaced as the CLI's resolved concrete version, not raw
-  brackets). Both are handled by the underlying CLIs; we surface + upgrade correctly.
-- **Two phases**: Phase 1 = `dotnet list package` (offline, fast, gated by the "List all packages"
-  option — OFF by default because it's heavy). Phase 2 = `dotnet outdated` ("Check for Updates").
-- **Scan scope**: whole solution in one call when all projects selected; per-project (parallel,
-  2–8 threads) for a subset OR when the solution has unsupported project types (`.shproj`) that
-  `dotnet list package` can't load (`dotnet outdated` tolerates them, so it keeps the single call).
-  Hard-fail of the whole-solution call falls back to per-project.
+- **Core value prop (lead with this in all user-facing copy)**: upgrades **keep version ranges**
+  (range is intent: the offered version is the highest inside the range; newer ones show as
+  "capped by range"), and work with **Central Package Management**, `VersionOverride` and
+  `$(Prop)` versions. Floating versions update by restore only.
+- **Engine**: one helper process per solution, started from the solution folder (its `global.json`
+  picks the SDK). The helper is read-only; it returns edits that the plugin applies.
+- **Scan**: `scan` returns rows plus `stale` projects (assets differ from what the project asks
+  for). The plugin restores the stale ones (unless "Never run dotnet restore") and scans again.
+  "List all packages" rows need no network.
+- **Upgrade**: `planUpgrade` -> confirm dialog (plan, shared versions, skips) -> `EditApplier`
+  (all files or none, one undo step) -> restore -> re-scan. Exact package ids.
 - **Grouped list**: `ProjectName · framework` header (grayed) per project+TFM; package rows show a
   checkbox + `Name · Current` (left) and the new version (right, whole-value colored by severity).
   Severity follows NuGet/SemVer: green=patch, yellow=minor, red=major/pre-release.
 - **Checkboxes** (only outdated rows checkable) + Space toggles selection; **speed search** by name.
 - **Error routing** (two distinct classes, never mixed):
-  - *User/environment failures* (missing CLI, unrestored project, `NU1102` version that doesn't
-    exist, non-zero dotnet exit) → notification balloon via the `dotnet outdated GUI`
-    `<notificationGroup>` + `LOG.warn`. The short message comes from `CliFailures.describe`;
+  - *User/environment failures* (engine cannot start, no .NET 6+ SDK, unrestored project, `NU1102`,
+    failing package source, a plan that no longer matches the files) → notification balloon via the
+    `NuGet (Extended)` `<notificationGroup>` + `LOG.warn`. The short message comes from `CliFailures.describe`;
     the raw CLI output is behind the balloon's **Copy Details** action. Never `LOG.error` —
     that opens the IDE fatal-error dialog and would fill the Marketplace Exceptions tab with
     other people's broken solutions.
@@ -83,16 +88,24 @@ ui/      OutdatedToolWindowFactory, OutdatedPanel (toolbar + phases), PackageLis
 
 ### Gotchas
 
-- `dotnet outdated` JSON keys are **PascalCase** (`Projects`, `ResolvedVersion`, `UpgradeSeverity`);
-  `dotnet list package --format json` keys are **camelCase**. Different DTOs.
-- `-inc` (include filter) is a case-insensitive **substring** match — upgrading `Foo` may also hit
-  `Foo.Bar`. The UI always re-scans after an upgrade to show the true state.
-- `dotnet list package` **requires restore**; unrestored projects error (surfaced, skipped).
+- **Never ship NuGet or MSBuild DLLs in the helper.** All `NuGet.*` / `Microsoft.Build` references
+  are `ExcludeAssets="runtime"`; the SDK's own copies load at run time. Shipping them breaks with a
+  `NuGet.Frameworks` version clash.
+- **Register MSBuild first.** `SdkHost.Register` runs before any code that touches `Microsoft.Build`
+  or `NuGet.*` types; such code sits in `NoInlining` methods or other classes.
+- **Stale = semantic, not file times.** A no-op restore does not rewrite `project.assets.json`.
+- **Only protocol JSON on the helper's stdout.** Logs go to stderr (the plugin writes them to idea.log).
+- Edit locations from MSBuild are 1-based; the column points at `<`. The key (item type, identity,
+  condition, expected text) must match; the location only breaks ties.
 
 ## Testing policy
 
 Every functional change needs a test where practical. Pure logic (command builders, parsing,
 severity, solution parsing, options round-trip) is unit-tested (JUnit4).
+
+The engine has its own tests: `helper/Core.Tests` (pure, in-process) and `helper/Helper.Tests`
+(runs the helper against fixture projects and a local folder feed - no network). CI runs them on
+SDK 6, 8 and 10. These may run locally with `dotnet test`.
 
 **Verification happens in CI, not locally.** Don't run Gradle locally to prove a change works —
 open the PR and let its checks do it. `build.yml` runs, on every PR: `test`,
@@ -108,7 +121,10 @@ UI behavior that no check can cover is confirmed by installing the built zip in 
   CodeQL needs a real compile — `clean --no-daemon --no-build-cache`), `compatibility.yml`
   (weekly plugin verifier, pinned to released Riders across the range — 2024.3.6 / 2025.2.4 /
   2026.1.4 / 2026.2; `recommended()` can resolve 404 EAPs),
-  `release.yml`, plus Dependabot. Actions are pinned to latest majors.
+  `release.yml`, plus Dependabot. Actions are pinned to latest majors. `build.yml`, `codeql.yml`,
+  `release.yml` and `compatibility.yml` install the .NET SDK (`actions/setup-dotnet@v6`);
+  `build.yml` also runs the helper tests on SDK 6/8/10 and a packaging check that starts the
+  bundled helper.
 - **EAP dev builds**: every successful `build.yml` run on **`main`** publishes an **EAP GitHub
   pre-release** (the `eap` job) — NOT the Marketplace. The plugin version is
   `<VERSION>-eap.<yyyyMMdd>.<run>` (`VERSION` = main's target, overriding via `-PpluginVersion`),

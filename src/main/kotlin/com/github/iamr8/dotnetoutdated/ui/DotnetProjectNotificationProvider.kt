@@ -1,5 +1,6 @@
 package com.github.iamr8.dotnetoutdated.ui
 
+import com.github.iamr8.dotnetoutdated.PluginText
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.project.Project
@@ -13,7 +14,7 @@ import javax.swing.JComponent
 
 /**
  * When a .NET project file or central-package-management file is opened, offers the
- * "dotnet outdated GUI" tool for checking outdated NuGet packages. Dismissible.
+ * "NuGet (Extended)" tool for checking outdated NuGet packages. Dismissible.
  */
 class DotnetProjectNotificationProvider : EditorNotificationProvider {
 
@@ -26,8 +27,8 @@ class DotnetProjectNotificationProvider : EditorNotificationProvider {
 
         return Function { _ ->
             EditorNotificationPanel().apply {
-                text = "Check outdated NuGet packages with the dotnet outdated GUI tool."
-                createActionLabel("Open dotnet outdated GUI") {
+                text = "Check outdated NuGet packages with ${PluginText.NAME}."
+                createActionLabel("Open ${PluginText.NAME}") {
                     ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)?.activate(null)
                 }
                 createActionLabel("Don't show again") {
@@ -47,7 +48,7 @@ class DotnetProjectNotificationProvider : EditorNotificationProvider {
     }
 
     companion object {
-        private const val TOOL_WINDOW_ID = "dotnet outdated GUI"
+        private const val TOOL_WINDOW_ID = PluginText.NAME
         private const val DISMISSED_KEY = "dotnetOutdatedGui.suggestion.dismissed"
     }
 }

@@ -1,5 +1,6 @@
 package com.github.iamr8.dotnetoutdated.settings
 
+import com.github.iamr8.dotnetoutdated.PluginText
 import com.github.iamr8.dotnetoutdated.cli.CredLogLevel
 import com.github.iamr8.dotnetoutdated.cli.OutdatedOptions
 import com.github.iamr8.dotnetoutdated.cli.PreRelease
@@ -13,9 +14,9 @@ import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.columns
 import com.intellij.ui.dsl.builder.panel
 
-/** "dotnet outdated GUI" settings page under Settings | Tools. Persists to [OutdatedOptionsService]. */
+/** "NuGet (Extended)" settings page under Settings | Tools. Persists to [OutdatedOptionsService]. */
 class OutdatedConfigurable(project: Project) :
-    BoundSearchableConfigurable("dotnet outdated GUI", "nuget.extended") {
+    BoundSearchableConfigurable(PluginText.NAME, "nuget.extended") {
 
     private val service = OutdatedOptionsService.getInstance(project)
     private val work: OutdatedOptions = service.options.deepCopy()
@@ -36,39 +37,39 @@ class OutdatedConfigurable(project: Project) :
         group("Packages Analyzed") {
             row {
                 checkBox("List all packages (including up-to-date)").bindSelected(work::includeUpToDate)
-                    .comment("Off by default. Lists every package via <code>dotnet list package</code> — can be a massive, slow operation on large solutions.")
+                    .comment("Off by default. Lists every package from the last restore, with no update check.")
             }
-            row { checkBox("Include auto-referenced packages (-i)").bindSelected(work::includeAutoReferences) }
-            row { checkBox("Include transitive dependencies (-t)").bindSelected(work::transitive) }
-            row("Transitive depth (-td):") { intField(work::transitiveDepth, 1) }
+            row { checkBox("Include auto-referenced packages").bindSelected(work::includeAutoReferences) }
+            row { checkBox("Include transitive dependencies (upgrade adds a direct reference)").bindSelected(work::transitive) }
+            row("Transitive depth:") { intField(work::transitiveDepth, 1) }
         }
         group("Version Policy") {
-            row("Pre-release (-pre):") {
+            row("Pre-release:") {
                 comboBox(PreRelease.entries).bindItem({ work.preRelease }, { work.preRelease = it ?: PreRelease.Auto })
             }
-            row("Pre-release label (-prl):") { textField().bindText(work::preReleaseLabel).columns(14) }
-            row("Version lock (-vl):") {
+            row("Pre-release label:") { textField().bindText(work::preReleaseLabel).columns(14) }
+            row("Version lock:") {
                 comboBox(VersionLock.entries).bindItem({ work.versionLock }, { work.versionLock = it ?: VersionLock.None })
             }
-            row("Maximum version (-mv):") { textField().bindText(work::maximumVersion).columns(14) }
-            row("Only versions older than (days) (-ot):") { intField(work::olderThanDays, 0) }
+            row("Maximum version (never above a range's upper bound):") { textField().bindText(work::maximumVersion).columns(14) }
+            row("Only versions older than (days):") { intField(work::olderThanDays, 0) }
         }
         group("Discovery") {
-            row { checkBox("Recurse directory for projects (-r)").bindSelected(work::recursive) }
-            row { checkBox("Include file-based apps when recursing (-fba)").bindSelected(work::includeFileBasedApps) }
-            row("Include only (names contain), comma-separated (-inc):") {
+            row { checkBox("Find projects in subfolders (no solution open)").bindSelected(work::recursive) }
+            row { checkBox("Include file-based apps (#:package, .NET 10 SDK) in subfolders").bindSelected(work::includeFileBasedApps) }
+            row("Show only (names contain), comma-separated:") {
                 textField().bindText({ work.includeFilters.joinToString(", ") }, { work.includeFilters = splitCsv(it) }).columns(30)
             }
-            row("Exclude (names contain), comma-separated (-exc):") {
+            row("Hide (names contain), comma-separated:") {
                 textField().bindText({ work.excludeFilters.joinToString(", ") }, { work.excludeFilters = splitCsv(it) }).columns(30)
             }
         }
         group("Sources & Reliability") {
-            row { checkBox("Skip restore preview / compat check (-n)").bindSelected(work::noRestore) }
-            row { checkBox("Ignore failed package sources (-ifs)").bindSelected(work::ignoreFailedSources) }
-            row("Idle timeout, seconds (-it):") { intField(work::idleTimeoutSeconds, 120) }
-            row("Runtime identifier (-rt):") { textField().bindText(work::runtime).columns(14) }
-            row("NuGet credential log level (-ncll):") {
+            row { checkBox("Never run dotnet restore (unrestored projects are skipped)").bindSelected(work::noRestore) }
+            row { checkBox("Ignore failed package sources").bindSelected(work::ignoreFailedSources) }
+            row("Engine timeout without progress, seconds:") { intField(work::idleTimeoutSeconds, 120) }
+            row("Runtime identifier:") { textField().bindText(work::runtime).columns(14) }
+            row("NuGet credential log level:") {
                 comboBox(CredLogLevel.entries).bindItem({ work.credLogLevel }, { work.credLogLevel = it ?: CredLogLevel.Warning })
             }
         }

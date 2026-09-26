@@ -54,28 +54,33 @@ class PackageListLogicTest {
     }
 
     @Test
-    fun checkedByTargetGroupsAndDedupes() {
+    fun checkedRowsCarryProjectFrameworkIdAndTarget() {
         val entries = PackageListLogic.buildEntries(
             listOf(
                 section("P1", "net8.0", "/p1.csproj", listOf(dep("Foo"), dep("Bar"))),
-                section("P2", "net8.0", "/p2.csproj", listOf(dep("Foo"))),
+                section("P2", "net6.0", "/p2.csproj", listOf(dep("Foo"))),
             ),
         )
         entries.filterIsInstance<PackageEntry>().forEach { it.checked = true }
 
-        val byTarget = PackageListLogic.checkedByTarget(entries)
-        assertEquals(setOf("/p1.csproj", "/p2.csproj"), byTarget.keys)
-        assertEquals(listOf("Bar", "Foo"), byTarget.getValue("/p1.csproj").sorted())
-        assertEquals(listOf("Foo"), byTarget.getValue("/p2.csproj"))
+        val rows = PackageListLogic.checkedRows(entries).sortedWith(compareBy({ it.project }, { it.id }))
+        assertEquals(
+            listOf(
+                CheckedRow("/p1.csproj", "net8.0", "Bar", "2.0.0", false),
+                CheckedRow("/p1.csproj", "net8.0", "Foo", "2.0.0", false),
+                CheckedRow("/p2.csproj", "net6.0", "Foo", "2.0.0", false),
+            ),
+            rows,
+        )
     }
 
     @Test
-    fun checkedByTargetIgnoresUpToDateEvenIfFlagged() {
+    fun checkedRowsIgnoreUpToDateEvenIfFlagged() {
         val entries = PackageListLogic.buildEntries(
             listOf(section("P", "net8.0", "/p.csproj", listOf(dep("UpToDate", outdated = false)))),
         )
         (entries.first { it is PackageEntry } as PackageEntry).checked = true // shouldn't happen via UI, but guard anyway
-        assertTrue(PackageListLogic.checkedByTarget(entries).isEmpty())
+        assertTrue(PackageListLogic.checkedRows(entries).isEmpty())
     }
 
     @Test

@@ -1,11 +1,11 @@
 package com.github.iamr8.dotnetoutdated.cli
 
 /**
- * Turns raw `dotnet` / `dotnet outdated` output into a short, actionable sentence for the user.
+ * Turns raw `dotnet` / engine output into a short, actionable sentence for the user.
  *
- * These failures are almost always about the *user's* solution (missing CLI, unrestored project,
- * a package version that doesn't exist) — not a plugin bug — so they are surfaced as notifications,
- * never through the IDE error reporter. Pure and unit-tested.
+ * These failures are almost always about the *user's* solution (unrestored project, a package
+ * version that doesn't exist, a broken project file) — not a plugin bug — so they are surfaced as
+ * notifications, never through the IDE error reporter. Pure and unit-tested.
  */
 object CliFailures {
 
@@ -15,9 +15,6 @@ object CliFailures {
     fun describe(stderr: String, stdout: String): String {
         val combined = (stderr + "\n" + stdout).lowercase()
         return when {
-            "no executable found matching command" in combined || "is not a dotnet command" in combined ->
-                "dotnet-outdated tool not found. Install: dotnet tool install -g dotnet-outdated-tool"
-
             "command not found" in combined || combined.isBlank() ->
                 "Could not run dotnet. Ensure the .NET SDK is installed and on PATH."
 

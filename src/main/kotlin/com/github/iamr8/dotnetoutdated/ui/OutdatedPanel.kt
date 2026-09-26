@@ -1,22 +1,33 @@
 package com.github.iamr8.dotnetoutdated.ui
 
+import com.github.iamr8.dotnetoutdated.PluginText
 import com.github.iamr8.dotnetoutdated.cli.CliFailures
-import com.github.iamr8.dotnetoutdated.cli.DotnetOutdatedRunner
+import com.github.iamr8.dotnetoutdated.cli.DotnetRunner
+import com.github.iamr8.dotnetoutdated.cli.OutdatedOptions
 import com.github.iamr8.dotnetoutdated.cli.ScanPlan
-import com.github.iamr8.dotnetoutdated.cli.ScanUnit
 import com.github.iamr8.dotnetoutdated.cli.Solution
 import com.github.iamr8.dotnetoutdated.cli.SolutionModel
-import com.github.iamr8.dotnetoutdated.parse.ListPackagesParser
-import com.github.iamr8.dotnetoutdated.parse.OutdatedReportParser
+import com.github.iamr8.dotnetoutdated.edit.EditApplier
+import com.github.iamr8.dotnetoutdated.engine.EngineOptions
+import com.github.iamr8.dotnetoutdated.engine.HelperException
+import com.github.iamr8.dotnetoutdated.engine.HelperFatalException
+import com.github.iamr8.dotnetoutdated.engine.HelperService
+import com.github.iamr8.dotnetoutdated.engine.HelperTimeoutException
+import com.github.iamr8.dotnetoutdated.engine.HelperUserException
+import com.github.iamr8.dotnetoutdated.engine.PlanParams
+import com.github.iamr8.dotnetoutdated.engine.ScanParams
+import com.github.iamr8.dotnetoutdated.engine.ScanResult
+import com.github.iamr8.dotnetoutdated.engine.SourceFailure
+import com.github.iamr8.dotnetoutdated.engine.UpgradePlan
+import com.github.iamr8.dotnetoutdated.engine.UpgradeRow
 import com.github.iamr8.dotnetoutdated.settings.OutdatedConfigurable
 import com.github.iamr8.dotnetoutdated.settings.OutdatedOptionsService
+import com.intellij.execution.ExecutionException
 import com.intellij.icons.AllIcons
-import com.intellij.ide.BrowserUtil
+import com.intellij.ide.impl.isTrusted
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
-import com.intellij.openapi.ide.CopyPasteManager
-import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionToolbar
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -25,6 +36,9 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.ide.CopyPasteManager
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
@@ -37,20 +51,17 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
-import java.awt.CardLayout
-import java.awt.GridBagLayout
 import java.awt.datatransfer.StringSelection
 import java.io.File
 import javax.swing.BoxLayout
 import javax.swing.JComponent
-import javax.swing.JEditorPane
 import javax.swing.JPanel
-import javax.swing.event.HyperlinkEvent
 
-/** Root component of the "dotnet outdated GUI" tool window. */
+/** Root component of the "NuGet (Extended)" tool window. */
 class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
-    private val runner = DotnetOutdatedRunner()
+    private val engine = HelperService.getInstance(project)
+    private val restorer = DotnetRunner()
     private val optionsService = OutdatedOptionsService.getInstance(project)
     private val listView = PackageListView(onSelectionChanged = { toolbar.updateActionsAsync() })
     private val status = JBLabel(" ")
@@ -60,76 +71,29 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     private var solution: Solution? = null
     /** Names of the solution's projects to include in the view (empty = show everything). */
     private var includedProjects: MutableSet<String> = linkedSetOf()
-    /** Last CLI result, unfiltered; the view is [includedProjects] applied to this. */
+    /** Last scan result; the view is built from this. */
     private var allRows: List<PackageSection> = emptyList()
     private var updatesChecked = false
     private var skippedProjects = 0
     private var busy = false
     private var listedOnce = false
 
-    @Volatile
-    private var cliAvailable = false
-    private val centerLayout = CardLayout()
-    private val centerPanel = JPanel(centerLayout)
-
     init {
         add(toolbar.component, BorderLayout.NORTH)
-        centerPanel.add(JBScrollPane(listView.component), CARD_TABLE)
-        centerPanel.add(cliMissingComponent(), CARD_CLI)
-        add(centerPanel, BorderLayout.CENTER)
+        add(JBScrollPane(listView.component), BorderLayout.CENTER)
         add(status.apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.SOUTH)
 
         discoverSolution()
     }
 
-    /** Lazy: on first show, verify the CLI and (only if enabled) list packages. */
+    /** Lazy: on first show, list packages only if enabled. */
     override fun addNotify() {
         super.addNotify()
         if (!listedOnce) {
             listedOnce = true
-            if (optionsService.options.includeUpToDate) runListPackages() else checkCliAndPrompt()
+            if (optionsService.options.includeUpToDate) runListPackages()
+            else setStatus("Press Check for Updates to find outdated packages.")
         }
-    }
-
-    private fun showCard(name: String) = centerLayout.show(centerPanel, name)
-
-    /** Centered "install the CLI" message with a link to the dotnet-outdated repo. */
-    private fun cliMissingComponent(): JComponent {
-        val html = """
-            <html><div style='text-align:center; padding:24px;'>
-              <p style='font-size:13px;'>The <b>dotnet-outdated</b> CLI is required to use this tool.</p>
-              <p>Install it (see the <a href="$INSTALL_URL">installation instructions</a>),
-                 then press <b>Reload</b> or <b>Check for Updates</b>.</p>
-            </div></html>
-        """.trimIndent()
-        val pane = JEditorPane("text/html", html).apply {
-            isEditable = false
-            isOpaque = false
-            addHyperlinkListener { e -> if (e.eventType == HyperlinkEvent.EventType.ACTIVATED) BrowserUtil.browse(INSTALL_URL) }
-        }
-        return JPanel(GridBagLayout()).apply { add(pane) }
-    }
-
-    /** Background CLI check used on first open when auto-listing is disabled. */
-    private fun checkCliAndPrompt() {
-        if (busy) return
-        busy = true
-        toolbar.updateActionsAsync()
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "dotnet outdated GUI: checking CLI availability", false) {
-            override fun run(indicator: ProgressIndicator) {
-                cliAvailable = runner.isOutdatedInstalled()
-            }
-            override fun onSuccess() = onEdt {
-                busy = false
-                if (cliAvailable) {
-                    showCard(CARD_TABLE)
-                    setStatus("Press Check for Updates to find outdated packages.")
-                } else {
-                    showCard(CARD_CLI)
-                }
-                toolbar.updateActionsAsync()
-            }
-        })
     }
 
     private fun buildToolbar(): ActionToolbar {
@@ -150,47 +114,16 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     private fun basePath(): String = project.basePath ?: System.getProperty("user.dir")
 
-    /** Runs [exec] over each unit in parallel, collecting rows and per-unit failures. */
-    private fun runUnits(
-        units: List<ScanUnit>,
-        indicator: ProgressIndicator,
-        exec: (ScanUnit) -> Pair<List<PackageSection>?, ScanFailure?>,
-    ): Pair<List<PackageSection>, List<ScanFailure>> {
-        if (units.isEmpty()) return emptyList<PackageSection>() to emptyList()
-        if (units.size == 1) {
-            indicator.isIndeterminate = true
-            indicator.text = "Analyzing ${units[0].label}…"
-            indicator.text2 = "Running dotnet on ${File(units[0].path).name}"
-            val (rows, error) = exec(units[0])
-            return (rows ?: emptyList()) to listOfNotNull(error)
-        }
+    /**
+     * Restore and file-based-app evaluation run the repository's MSBuild code, so an untrusted
+     * (safe mode) project gets neither. `com.intellij.ide.impl.isTrusted` is the one call that exists
+     * from 2024.3 on; its replacement `TrustedProjects.isProjectTrusted(Project)` is not in 2024.3.
+     */
+    @Suppress("DEPRECATION")
+    private fun projectTrusted(): Boolean = project.isTrusted()
 
-        val rows = java.util.Collections.synchronizedList(mutableListOf<PackageSection>())
-        val failures = java.util.Collections.synchronizedList(mutableListOf<ScanFailure>())
-        val done = java.util.concurrent.atomic.AtomicInteger(0)
-        indicator.isIndeterminate = false
-        indicator.text = "Analyzing 0 / ${units.size} projects…"
-        val pool = java.util.concurrent.Executors.newFixedThreadPool(minOf(units.size, MAX_PARALLEL))
-        try {
-            val futures = units.map { unit ->
-                pool.submit {
-                    indicator.text2 = "Analyzing ${unit.label}"
-                    val (unitRows, error) = exec(unit)
-                    if (unitRows != null) rows.addAll(unitRows) else if (error != null) failures.add(error)
-                    val completed = done.incrementAndGet()
-                    indicator.fraction = completed.toDouble() / units.size
-                    indicator.text = "Analyzed $completed / ${units.size} projects…"
-                }
-            }
-            for (f in futures) {
-                indicator.checkCanceled()
-                f.get()
-            }
-        } finally {
-            pool.shutdownNow()
-        }
-        return rows.toList() to failures.toList()
-    }
+    /** The engine runs from the solution folder, so that folder's global.json picks the SDK. */
+    private fun workDir(): String = solution?.solutionPath?.let { File(it).parent } ?: basePath()
 
     private fun discoverSolution() {
         solution = SolutionModel.discover(File(basePath()), project.name)
@@ -209,8 +142,8 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     /**
-     * A dotnet / user-project failure (missing CLI, unrestored project, a package version that
-     * doesn't exist, …) — *not* a plugin bug. Surfaced as a balloon with the full CLI output one
+     * A dotnet / user-project failure (unrestored project, a package version that doesn't exist,
+     * a failing feed, …) — *not* a plugin bug. Surfaced as a balloon with the full output one
      * click away, plus `LOG.warn` for idea.log.
      *
      * Deliberately never `LOG.error`: that opens the IDE's fatal-error dialog and would push other
@@ -224,13 +157,13 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     ) {
         if (failures.isEmpty()) return
         val details = failures.joinToString("\n\n") { it.details }
-        LOG.warn("dotnet outdated GUI: $context\n$details")
+        LOG.warn("${PluginText.NAME}: $context\n$details")
 
         val shown = failures.take(MAX_SHOWN_FAILURES)
         val body = buildString {
             shown.forEach { append(StringUtil.escapeXmlEntities(it.line)).append("<br/>") }
             val more = failures.size - shown.size
-            if (more > 0) append("…and $more more project(s).")
+            if (more > 0) append("…and $more more.")
         }
         onEdt {
             if (updateStatus) setStatus("$context — see the notification for details.")
@@ -247,18 +180,22 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     /** An unexpected plugin-side exception: this one *is* worth reporting (IDE error reporter). */
     private fun reportInternalError(context: String, throwable: Throwable) {
-        LOG.error("dotnet outdated GUI: $context", throwable)
+        // The helper's own stack trace (or its stderr tail) goes into the report as text.
+        LOG.error("${PluginText.NAME}: $context", throwable, *internalErrorDetails(throwable))
         onEdt { setStatus("$context — see the IDE error report for details.") }
+    }
+
+    /** Engine failures: the user's environment -> balloon; engine or plugin bugs -> error report. */
+    private fun reportEngineError(context: String, error: Throwable) {
+        when (error) {
+            is HelperUserException, is HelperFatalException, is HelperTimeoutException ->
+                notifyFailure(context, listOf(ScanFailure("Engine", error.message ?: context, (error as HelperException).details.orEmpty())))
+            else -> reportInternalError(context, error)
+        }
     }
 
     private fun notificationGroup() =
         NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP)
-
-    /** Blocking CLI presence check (call off the EDT); caches the positive result. */
-    private fun ensureCli(): Boolean {
-        if (!cliAvailable) cliAvailable = runner.isOutdatedInstalled()
-        return cliAvailable
-    }
 
     /** Render the list from [allRows] and update the status line. EDT only. */
     private fun render() {
@@ -306,116 +243,95 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         popup.showUnderneathOf(anchor)
     }
 
-    /** Phase 1: discover packages + current versions locally (no `dotnet outdated`, no network). */
-    private fun runListPackages() {
+    /** Phase 1: packages and current versions from the last restore (no update check). */
+    private fun runListPackages() = runScanTask(checkUpdates = false)
+
+    /** Phase 2: check the package sources for newer versions. */
+    private fun runScan() = runScanTask(checkUpdates = true)
+
+    private fun runScanTask(checkUpdates: Boolean) {
         if (busy) return
         busy = true
         toolbar.updateActionsAsync()
-        setStatus("Finding packages…")
+        setStatus(if (checkUpdates) "Checking for updates…" else "Finding packages…")
+        FileDocumentManager.getInstance().saveAllDocuments() // the engine reads project files from disk
 
-        val exec: (ScanUnit) -> Pair<List<PackageSection>?, ScanFailure?> = { unit ->
-            val result = runner.listPackages(unit.path, basePath(), optionsService.options)
-            if (result.json.isBlank()) null to failureOf(unit, result.stderr, result.stdout)
-            else OutdatedRows.buildFromListing(ListPackagesParser.parse(result.json), unit.path) to null
-        }
+        val options = optionsService.options.deepCopy()
+        val trusted = projectTrusted()
+        val paths = enginePaths(ScanPlan.projectPaths(solution, includedProjects, File(basePath()), options.recursive, options.includeFileBasedApps), trusted)
+        val title = if (checkUpdates) "${PluginText.NAME}: checking for package updates" else "${PluginText.NAME}: listing NuGet packages"
+        val hardFailContext = if (checkUpdates) "Update check failed" else "Listing packages failed"
+        val skipContext = if (checkUpdates) "Some projects were skipped during the update check" else "Some projects were skipped while listing"
 
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "dotnet outdated GUI: listing NuGet packages (dotnet list package)", true) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, title, true) {
             private var rows: List<PackageSection> = emptyList()
-            private var failures: List<ScanFailure> = emptyList()
+            private val failures = mutableListOf<ScanFailure>()
+            private var sources: List<SourceFailure> = emptyList()
 
             override fun run(indicator: ProgressIndicator) {
-                if (!ensureCli()) return
-                // dotnet list package can't load .shproj etc. -> per-project when unsupported present;
-                // it also hard-fails on a single unrestored project, so recover the rest per-project.
-                val (r, f) = runScoped(indicator, toleratesUnsupported = false, fallbackToPerProject = true, exec)
-                rows = r; failures = f
+                indicator.isIndeterminate = true
+                indicator.text = "Analyzing ${paths.size} project(s)…"
+                var result = scanOnce(paths, options, checkUpdates, indicator)
+                var restoreFailed = false
+                var restoredLabels = emptySet<String>()
+                if (result.stale.isNotEmpty() && restoreAllowed(trusted, options.noRestore)) {
+                    indicator.text = "Restoring ${result.stale.size} project(s)…"
+                    val restoreFailures = restore(result.stale, options, indicator, afterUpgrade = false)
+                    failures += restoreFailures
+                    restoreFailed = restoreFailures.isNotEmpty()
+                    restoredLabels = restoreFailures.map { it.label }.toSet()
+                    indicator.text = "Analyzing ${paths.size} project(s)…"
+                    result = scanOnce(paths, options, checkUpdates, indicator)
+                }
+                // Every leftover stale project is listed as skipped - a restore failure alone doesn't
+                // explain every one of them (e.g. a whole-solution restore names only the .sln), so a
+                // project not already named by one still needs its own reason.
+                staleSkipReasons(result.stale, restoredLabels, options.noRestore, restoreFailed, trusted).forEach { (label, reason) ->
+                    failures += ScanFailure(label, reason, "")
+                }
+                result.failures.forEach { failures += ScanFailure(it.project, CliFailures.describe(it.summary, it.details), it.details) }
+                sources = result.sourceFailures
+                rows = OutdatedRows.fromScan(result, options.includeFilters, options.excludeFilters)
             }
 
             override fun onSuccess() = onEdt {
                 busy = false
-                if (!cliAvailable) { showCard(CARD_CLI); toolbar.updateActionsAsync(); return@onEdt }
-                finishScan(rows, failures, checked = false, hardFailContext = "Listing packages failed", skipContext = "Some projects were skipped while listing")
+                finishScan(rows, failures, checkUpdates, hardFailContext, skipContext)
+                notifySources(sources)
             }
+
+            override fun onCancel() = cancelled()
 
             override fun onThrowable(error: Throwable) = onEdt {
                 busy = false
-                reportInternalError("Listing packages failed", error)
+                reportEngineError(hardFailContext, error)
                 toolbar.updateActionsAsync()
             }
         })
     }
 
-    /** Phase 2: run `dotnet outdated` to fill New Version. */
-    private fun runScan() {
-        if (busy) return
-        busy = true
-        toolbar.updateActionsAsync()
-        setStatus("Checking for updates…")
+    private fun scanOnce(paths: List<String>, options: OutdatedOptions, checkUpdates: Boolean, indicator: ProgressIndicator): ScanResult =
+        engine.call(
+            workDir(), "scan",
+            ScanParams(workDir(), paths, EngineOptions.from(options, checkUpdates)),
+            ScanResult::class.java, timeoutMs(options), indicator,
+        )
 
-        val exec: (ScanUnit) -> Pair<List<PackageSection>?, ScanFailure?> = { unit ->
-            val result = runner.scan(unit.path, basePath(), optionsService.options)
-            when {
-                result.timedOut -> null to failureOf(unit, result.stderr, result.stdout, summary = "timed out")
-                result.exitCode != 0 && result.json.isBlank() -> null to failureOf(unit, result.stderr, result.stdout)
-                else -> OutdatedRows.build(OutdatedReportParser.parse(result.json), unit.path) to null
-            }
+    /** Runs `dotnet restore`, then tells the engine: restore rewrites the obj folder's `*.nuget.g.props`, which evaluation imports. */
+    private fun restore(paths: List<String>, options: OutdatedOptions, indicator: ProgressIndicator, afterUpgrade: Boolean): List<ScanFailure> {
+        val failures = try {
+            restorer.restore(
+                paths, solution?.solutionPath, solution?.projects?.map { it.path }.orEmpty(),
+                options.runtime, workDir(), restoreTimeoutMs(options), indicator, afterUpgrade,
+            )
+        } catch (e: ExecutionException) {
+            // dotnet could not even be started - an environment failure, not a plugin bug.
+            return listOf(failureOf("Restore", e.message.orEmpty(), "", "Could not run dotnet restore: ${e.message.orEmpty()}"))
         }
-
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "dotnet outdated GUI: checking for package updates (dotnet outdated)", true) {
-            private var rows: List<PackageSection> = emptyList()
-            private var failures: List<ScanFailure> = emptyList()
-
-            override fun run(indicator: ProgressIndicator) {
-                if (!ensureCli()) return
-                // dotnet outdated tolerates .shproj etc. -> keep the fast single whole-solution call.
-                // No per-project fan-out on failure: it fails fast and names the broken project,
-                // and re-running all projects one-by-one is a minutes-long crawl that fixes nothing.
-                val (r, f) = runScoped(indicator, toleratesUnsupported = true, fallbackToPerProject = false, exec)
-                rows = r; failures = f
-            }
-
-            override fun onSuccess() = onEdt {
-                busy = false
-                if (!cliAvailable) { showCard(CARD_CLI); toolbar.updateActionsAsync(); return@onEdt }
-                finishScan(rows, failures, checked = true, hardFailContext = "Update check failed", skipContext = "Some projects were skipped during the update check")
-            }
-
-            override fun onThrowable(error: Throwable) = onEdt {
-                busy = false
-                reportInternalError("Update check failed", error)
-                toolbar.updateActionsAsync()
-            }
-        })
-    }
-
-    /**
-     * Runs the primary units: the whole solution in one call when all projects are selected (the
-     * default), or one unit per project when the user narrowed the scope in the picker.
-     *
-     * [fallbackToPerProject] controls what happens when the whole-solution call comes back empty
-     * with a failure:
-     *  - Phase 2 (`dotnet outdated`) passes `false`: NO fan-out. The CLI fails fast and names the
-     *    broken project (e.g. an `NU1102` version that doesn't exist); re-running every project
-     *    one-by-one turns a ~15s solution call into a minutes-long crawl without fixing anything —
-     *    the broken projects still fail. The CLI error is surfaced instead; per-project is an
-     *    explicit capability via the scope picker.
-     *  - Phase 1 (`dotnet list package`) passes `true`: it hard-fails on any single unrestored or
-     *    unsupported project, so recover the rest with a per-project fan-out (each call is offline
-     *    and cheap). One broken project shouldn't blank the whole list.
-     */
-    private fun runScoped(
-        indicator: ProgressIndicator,
-        toleratesUnsupported: Boolean,
-        fallbackToPerProject: Boolean,
-        exec: (ScanUnit) -> Pair<List<PackageSection>?, ScanFailure?>,
-    ): Pair<List<PackageSection>, List<ScanFailure>> {
-        val primary = ScanPlan.primaryUnits(solution, includedProjects, basePath(), toleratesUnsupported)
-        val (rows, failures) = runUnits(primary, indicator, exec)
-        if (ScanPlan.shouldFallBackToPerProject(fallbackToPerProject, primary, solution, rows.isEmpty(), failures.isNotEmpty())) {
-            val fallback = ScanPlan.perProjectUnits(solution, includedProjects, basePath())
-            if (fallback.isNotEmpty()) return runUnits(fallback, indicator, exec)
+        paths.forEach(engine::markChanged)
+        return failures.map {
+            failureOf(it.label, it.stderr, it.stdout, if (it.timedOut) "timed out" else CliFailures.describe(it.stderr, it.stdout))
         }
-        return rows to failures
     }
 
     private fun finishScan(
@@ -425,7 +341,6 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         hardFailContext: String,
         skipContext: String,
     ) {
-        showCard(CARD_TABLE)
         allRows = rows // PackageListView sorts sections/rows for a stable order
         skippedProjects = failures.size
         updatesChecked = checked
@@ -437,71 +352,158 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         toolbar.updateActionsAsync()
     }
 
+    private fun notifySources(sources: List<SourceFailure>) {
+        val lines = sources.map {
+            ScanFailure(it.source, if (it.signInNeeded) "sign-in needed - check the credential provider" else it.message, it.message)
+        }
+        notifyFailure("Some package sources failed", lines, NotificationType.INFORMATION, updateStatus = false)
+    }
+
     private fun runUpgrade() {
         if (busy) return
-        val byTarget = listView.checkedByTarget()
-        val packageCount = byTarget.values.flatten().distinct().size
-        if (packageCount == 0) return
-
-        val answer = Messages.showYesNoDialog(
-            project,
-            "Upgrade $packageCount package(s)? This edits your .csproj files.\n\n" +
-                "Note: dotnet outdated matches package names by substring, so closely named " +
-                "packages may also be upgraded. The list will re-scan afterwards.",
-            "Upgrade Packages",
-            "Upgrade",
-            "Cancel",
-            Messages.getWarningIcon(),
-        )
-        if (answer != Messages.YES) return
+        val checked = listView.checkedRows()
+        if (checked.isEmpty()) return
 
         busy = true
         toolbar.updateActionsAsync()
-        setStatus("Upgrading $packageCount package(s)…")
+        setStatus("Planning the upgrade…")
+        FileDocumentManager.getInstance().saveAllDocuments()
 
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "dotnet outdated GUI: upgrading selected packages (dotnet outdated -u)", true) {
-            private val failures = mutableListOf<ScanFailure>()
+        val options = optionsService.options.deepCopy()
+        val trusted = projectTrusted()
+        val restoreOff = !restoreAllowed(trusted, options.noRestore)
+        // Every solution project may share a version with a checked row, so all are consumers.
+        val allNames = solution?.projects?.map { it.name }?.toSet().orEmpty()
+        val allPaths = enginePaths(ScanPlan.projectPaths(solution, allNames, File(basePath()), options.recursive, options.includeFileBasedApps), trusted)
+        val rows = checked.filterNot { it.restoreOnly }.map { UpgradeRow(it.project, it.framework, it.id, it.target) }
+        val (restoreOnly, restoreOnlyRowCount) = restoreOnlyPlan(checked, restoreOff)
+        if (restoreOff && checked.any { it.restoreOnly }) {
+            // Restore is the only way a floating row gets its new version, and restore is off -
+            // there is nothing this upgrade can do for it, so it never reaches the confirm dialog.
+            notifyFailure(
+                "Restore is off",
+                listOf(
+                    ScanFailure(
+                        "Floating packages",
+                        "${checked.count { it.restoreOnly }} floating package(s) need a restore to pick up their new version. " +
+                            (if (trusted) "Restore is off in settings" else "Restore is off for an untrusted project") +
+                            ", so they were not upgraded.",
+                        "",
+                    ),
+                ),
+                NotificationType.INFORMATION,
+                updateStatus = false,
+            )
+        }
+
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "${PluginText.NAME}: planning the upgrade", true) {
+            private var plan = UpgradePlan()
 
             override fun run(indicator: ProgressIndicator) {
-                for ((targetPath, names) in byTarget) {
-                    indicator.checkCanceled()
-                    val unit = ScanUnit(File(targetPath).name, targetPath)
-                    indicator.text = unit.label
-                    val result = runner.upgrade(targetPath, names, basePath(), optionsService.options)
-                    if (result.timedOut) failures += failureOf(unit, result.stderr, result.stdout, summary = "timed out")
-                    else if (result.exitCode != 0) failures += failureOf(unit, result.stderr, result.stdout)
-                }
+                if (rows.isEmpty()) return
+                plan = engine.call(
+                    workDir(), "planUpgrade",
+                    PlanParams(workDir(), allPaths, rows, EngineOptions.from(options, checkUpdates = true)),
+                    UpgradePlan::class.java, timeoutMs(options), indicator,
+                )
             }
 
             override fun onSuccess() = onEdt {
                 busy = false
                 toolbar.updateActionsAsync()
-                if (failures.isNotEmpty()) {
-                    notifyFailure("Some upgrades failed", failures)
-                } else {
-                    setStatus("Upgrade complete. Re-checking…")
-                }
-                runScan()
+                applyPlan(plan, restoreOnly, restoreOnlyRowCount, options, restoreOff)
             }
+
+            override fun onCancel() = cancelled()
 
             override fun onThrowable(error: Throwable) = onEdt {
                 busy = false
-                reportInternalError("Upgrade failed", error)
+                reportEngineError("Upgrade planning failed", error)
                 toolbar.updateActionsAsync()
             }
         })
     }
 
-    /** Builds a [ScanFailure]: short summary for the UI, raw CLI output kept for "Copy Details". */
-    private fun failureOf(
-        unit: ScanUnit,
-        stderr: String,
-        stdout: String,
-        summary: String = CliFailures.describe(stderr, stdout),
-    ): ScanFailure {
-        val raw = listOf(stderr, stdout).filter { it.isNotBlank() }.joinToString("\n").trim()
-        return ScanFailure(unit.label, summary, raw)
+    /** EDT: confirm, edit the files as one undo step, restore, re-scan. */
+    private fun applyPlan(plan: UpgradePlan, restoreOnly: List<String>, restoreOnlyRowCount: Int, options: OutdatedOptions, restoreOff: Boolean) {
+        val skipped = plan.skipped.map { ScanFailure("${it.id} (${File(it.project).nameWithoutExtension})", it.reason, "") }
+        if (plan.edits.isEmpty() && restoreOnly.isEmpty()) {
+            if (skipped.isEmpty()) setStatus("Nothing to upgrade.") else notifyFailure("Nothing was upgraded", skipped)
+            return
+        }
+        val answer = Messages.showYesNoDialog(
+            project,
+            UpgradeSummary.text(plan, restoreOnlyRowCount),
+            "Upgrade Packages",
+            "Upgrade",
+            "Cancel",
+            Messages.getQuestionIcon(),
+        )
+        if (answer != Messages.YES) {
+            setStatus("Upgrade cancelled.")
+            return
+        }
+
+        val applied = EditApplier.apply(project, plan.edits, "Upgrade NuGet packages")
+        if (applied is EditApplier.Result.Failed) {
+            notifyFailure("Upgrade not applied", listOf(ScanFailure("Upgrade", applied.reason, "")))
+            return
+        }
+        if (skipped.isNotEmpty()) notifyFailure("Some packages were skipped", skipped, NotificationType.INFORMATION, updateStatus = false)
+
+        val toRestore = (plan.restoreProjects + restoreOnly).distinct()
+        if (restoreOff || toRestore.isEmpty()) {
+            runScan()
+            return
+        }
+        busy = true
+        toolbar.updateActionsAsync()
+        setStatus("Restoring ${toRestore.size} project(s)…")
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "${PluginText.NAME}: restoring after the upgrade", true) {
+            private var failures: List<ScanFailure> = emptyList()
+
+            override fun run(indicator: ProgressIndicator) {
+                failures = restore(toRestore, options, indicator, afterUpgrade = true)
+            }
+
+            override fun onSuccess() = onEdt {
+                busy = false
+                if (failures.isNotEmpty()) notifyFailure("Restore failed after the upgrade", failures)
+                else setStatus("Upgrade complete. Re-checking…")
+                runScan()
+            }
+
+            // The edits are already applied - a cancelled restore still leaves the list showing
+            // stale versions, so re-scan rather than just resetting to idle.
+            override fun onCancel() = onEdt {
+                busy = false
+                toolbar.updateActionsAsync()
+                runScan()
+            }
+
+            override fun onThrowable(error: Throwable) = onEdt {
+                busy = false
+                reportInternalError("Restore failed", error)
+                toolbar.updateActionsAsync()
+            }
+        })
     }
+
+    private fun cancelled() = onEdt {
+        busy = false
+        setStatus("Cancelled.")
+        toolbar.updateActionsAsync()
+    }
+
+    /** Builds a [ScanFailure]: short summary for the UI, raw output kept for "Copy Details". */
+    private fun failureOf(label: String, stderr: String, stdout: String, summary: String): ScanFailure {
+        val raw = listOf(stderr, stdout).filter { it.isNotBlank() }.joinToString("\n").trim()
+        return ScanFailure(label, summary, raw)
+    }
+
+    private fun timeoutMs(options: OutdatedOptions): Long = options.idleTimeoutSeconds.coerceAtLeast(MIN_TIMEOUT_SECONDS) * 1000L
+
+    private fun restoreTimeoutMs(options: OutdatedOptions): Long = maxOf(5 * 60 * 1000L, (options.idleTimeoutSeconds + 60) * 1000L)
 
     private fun onEdt(block: () -> Unit) =
         ApplicationManager.getApplication().invokeLater(block)
@@ -523,7 +525,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     private inner class CheckForUpdatesAction : AnAction(
         "Check for Updates",
-        "Run dotnet outdated to fill New Version",
+        "Check the package sources for newer versions",
         AllIcons.Vcs.Fetch,
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
@@ -565,7 +567,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         override fun actionPerformed(e: AnActionEvent) = runUpgrade()
     }
 
-    private inner class OptionsAction : AnAction("Settings", "Open dotnet outdated GUI settings", AllIcons.General.Settings) {
+    private inner class OptionsAction : AnAction("Settings", "Open ${PluginText.NAME} settings", AllIcons.General.Settings) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
         override fun actionPerformed(e: AnActionEvent) {
             ShowSettingsUtil.getInstance().showSettingsDialog(project, OutdatedConfigurable::class.java)
@@ -574,22 +576,66 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     companion object {
         private val LOG = logger<OutdatedPanel>()
-        private val MAX_PARALLEL = (Runtime.getRuntime().availableProcessors() - 1).coerceIn(2, 8)
-        private const val CARD_TABLE = "table"
-        private const val CARD_CLI = "cli"
-        private const val INSTALL_URL = "https://github.com/dotnet-outdated/dotnet-outdated#installation"
+        private const val MIN_TIMEOUT_SECONDS = 30
         /** Must match the <notificationGroup id="…"> in plugin.xml. */
-        private const val NOTIFICATION_GROUP = "dotnet outdated GUI"
+        private const val NOTIFICATION_GROUP = PluginText.NAME
         /** Balloons stay readable; the rest is in "Copy Details" and idea.log. */
         private const val MAX_SHOWN_FAILURES = 3
     }
 
     /**
      * A unit that couldn't be scanned: [summary] is the short, actionable line shown to the user,
-     * [raw] the untouched CLI output kept for "Copy Details" / idea.log.
+     * [raw] the untouched output kept for "Copy Details" / idea.log.
      */
     private data class ScanFailure(val label: String, val summary: String, val raw: String) {
         val line: String get() = "$label: $summary"
         val details: String get() = if (raw.isBlank()) line else "$line\n$raw"
     }
 }
+
+/**
+ * Pure: the (label, reason) pair to show for each leftover stale project - one whose file name a
+ * restore failure already names (`restoredLabels`, e.g. `App.csproj` or a whole-solution `App.sln`)
+ * is dropped, so it isn't listed twice. Matched on the full file name, not the bare project name:
+ * a solution restore failure names the `.sln`, which must not accidentally match a same-named
+ * project's `.csproj`.
+ */
+internal fun staleSkipReasons(
+    stale: List<String>,
+    restoredLabels: Set<String>,
+    noRestore: Boolean,
+    restoreFailed: Boolean,
+    trusted: Boolean = true,
+): List<Pair<String, String>> {
+    val reason = when {
+        !trusted -> "project not trusted - restore is off"
+        noRestore -> "not restored (restore is off in settings)"
+        restoreFailed -> "restore failed - see Copy Details"
+        else -> "restore did not bring its packages up to date"
+    }
+    return stale
+        .filterNot { File(it).name in restoredLabels }
+        .map { File(it).nameWithoutExtension to reason }
+}
+
+/**
+ * Pure: the distinct projects to restore for the checked floating (restore-only) rows, and how many
+ * rows that is (for [UpgradeSummary]) - both empty when restore is off, since restore is the only
+ * way a floating row ever gets its new version.
+ */
+internal fun restoreOnlyPlan(checked: List<CheckedRow>, noRestore: Boolean): Pair<List<String>, Int> {
+    if (noRestore) return emptyList<String>() to 0
+    val rows = checked.filter { it.restoreOnly }
+    return rows.map { it.project }.distinct() to rows.size
+}
+
+/** Pure: restore runs the repository's MSBuild targets, so only a trusted project with restore on gets it. */
+internal fun restoreAllowed(trusted: Boolean, noRestore: Boolean): Boolean = trusted && !noRestore
+
+/** Pure: an untrusted project sends no `.cs` file-based apps (evaluating one runs `dotnet build`). */
+internal fun enginePaths(paths: List<String>, trusted: Boolean): List<String> =
+    if (trusted) paths else paths.filterNot { it.endsWith(".cs", ignoreCase = true) }
+
+/** Pure: the helper's stack trace (kind `bug`) or stderr tail (crash), as report text. */
+internal fun internalErrorDetails(throwable: Throwable): Array<String> =
+    listOfNotNull((throwable as? HelperException)?.details?.takeIf { it.isNotBlank() }).toTypedArray()

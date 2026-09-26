@@ -1,6 +1,6 @@
 package com.github.iamr8.dotnetoutdated.model
 
-/** Upgrade severity as reported by `dotnet outdated`. */
+/** Upgrade severity as reported by the engine. */
 enum class UpgradeSeverity {
     NONE, PATCH, MINOR, MAJOR, UNKNOWN;
 

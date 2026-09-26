@@ -2,73 +2,55 @@ package com.github.iamr8.dotnetoutdated.cli
 
 import java.io.File
 
-/** A single thing to scan: the whole solution, one project, or the base dir — display label + CLI path. */
-data class ScanUnit(val label: String, val path: String)
-
-/**
- * Pure decisions for how a scan is scoped over the open solution. No Swing, no process — so the
- * whole-solution-vs-per-project choice and the per-project fallback rule are unit-testable.
- */
+/** Pure: which project files a scan covers. The engine takes a list of paths, so there is no per-tool split any more. */
 object ScanPlan {
 
-    /** True when every project in the open solution is included (the default = one whole-solution call). */
+    private val projectExts = setOf("csproj", "fsproj", "vbproj")
+    private val skipDirs = setOf("bin", "obj", ".git", ".idea", "node_modules")
+    private const val DIRECTIVE_LINES = 64
+
+    /** True when every project in the open solution is included. */
     fun allProjectsSelected(solution: Solution?, includedProjects: Set<String>): Boolean {
         val sln = solution ?: return true
         return sln.projects.isNotEmpty() && includedProjects.size == sln.projects.size
     }
 
-    /** One unit covering the whole solution (null when there is no solution). */
-    fun solutionUnit(solution: Solution?): ScanUnit? =
-        solution?.let { ScanUnit(it.name, it.solutionPath) }
-
-    /** One unit per included project; the base dir when there is no solution. */
-    fun perProjectUnits(solution: Solution?, includedProjects: Set<String>, basePath: String): List<ScanUnit> {
-        if (solution != null && solution.projects.isNotEmpty()) {
-            return solution.projects.filter { it.name in includedProjects }
-                .ifEmpty { solution.projects }
-                .map { ScanUnit(it.name, it.path) }
-        }
-        return listOf(ScanUnit(File(basePath).name, basePath))
-    }
-
-    /**
-     * Primary units: the whole solution in one call when all projects are selected; per-project for a
-     * subset. [toleratesUnsupported] = false forces per-project when the solution has project types
-     * the tool can't load (e.g. `dotnet list package` on `.shproj`); `dotnet outdated` tolerates them,
-     * so it keeps the fast single call.
-     */
-    fun primaryUnits(
+    fun projectPaths(
         solution: Solution?,
         includedProjects: Set<String>,
-        basePath: String,
-        toleratesUnsupported: Boolean,
-    ): List<ScanUnit> {
-        val wholeSolutionOk = allProjectsSelected(solution, includedProjects) &&
-            (toleratesUnsupported || solution?.hasUnsupportedProjects != true)
-        return if (wholeSolutionOk) {
-            listOfNotNull(solutionUnit(solution)).ifEmpty { perProjectUnits(solution, includedProjects, basePath) }
+        baseDir: File,
+        recursive: Boolean,
+        includeFileBasedApps: Boolean,
+    ): List<String> {
+        val projects = if (solution != null && solution.projects.isNotEmpty()) {
+            solution.projects.filter { it.name in includedProjects }.ifEmpty { solution.projects }.map { it.path }
         } else {
-            perProjectUnits(solution, includedProjects, basePath)
+            find(baseDir, recursive) { it.extension.lowercase() in projectExts }
+        }
+        val apps = if (recursive && includeFileBasedApps) {
+            find(solution?.solutionPath?.let { File(it).parentFile } ?: baseDir, recursive = true, ::isFileBasedApp)
+        } else {
+            emptyList()
+        }
+        return (projects + apps).distinct()
+    }
+
+    /** A `.cs` file with a `#:package` directive near the top (SDK 10 file-based app). */
+    fun isFileBasedApp(file: File): Boolean {
+        if (!file.isFile || !file.extension.equals("cs", ignoreCase = true)) return false
+        return file.bufferedReader().useLines { lines ->
+            lines.take(DIRECTIVE_LINES).any { it.trimStart().startsWith("#:package ") }
         }
     }
 
-    /**
-     * Whether a [primary] run that produced no rows but did fail should be retried per-project.
-     *
-     * Only phase 1 (`dotnet list package`) enables it: it hard-fails on any single unrestored or
-     * unsupported project, and each per-project call is offline and cheap, so recover the rest.
-     * Phase 2 (`dotnet outdated`) passes `false` — it fails fast and names the broken project, and
-     * re-running every project one-by-one is a minutes-long crawl that fixes nothing. Never fans out
-     * a run that was already per-project (only a single whole-solution unit is retried).
-     */
-    fun shouldFallBackToPerProject(
-        fallbackEnabled: Boolean,
-        primary: List<ScanUnit>,
-        solution: Solution?,
-        rowsEmpty: Boolean,
-        hasFailures: Boolean,
-    ): Boolean {
-        if (!fallbackEnabled || !rowsEmpty || !hasFailures) return false
-        return primary.size == 1 && primary.first().path == solution?.solutionPath
+    private fun find(dir: File, recursive: Boolean, accept: (File) -> Boolean): List<String> {
+        if (!dir.isDirectory) return emptyList()
+        return dir.walkTopDown()
+            .maxDepth(if (recursive) Int.MAX_VALUE else 1)
+            .onEnter { it == dir || (it.name.lowercase() !in skipDirs && !it.name.startsWith(".")) }
+            .filter { it.isFile && accept(it) }
+            .map { it.path }
+            .sorted()
+            .toList()
     }
 }

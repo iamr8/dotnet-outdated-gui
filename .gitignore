@@ -27,3 +27,7 @@ replay_pid*
 # OS
 .DS_Store
 Thumbs.db
+
+# Helper engine (.NET)
+helper/**/bin/
+helper/**/obj/

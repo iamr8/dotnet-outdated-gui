@@ -35,9 +35,12 @@ fun SeverityColor.toJBColor(): Color = when (this) {
 internal sealed class ListEntry
 /** A `Project · framework` section header carrying its own package rows for the section toggle. */
 internal class HeaderEntry(val title: String, val packages: List<PackageEntry>) : ListEntry()
-internal class PackageEntry(val dep: DepRow, val target: String) : ListEntry() {
+internal class PackageEntry(val dep: DepRow, val target: String, val framework: String = "") : ListEntry() {
     var checked: Boolean = false
 }
+
+/** One checked row, as the engine's planUpgrade needs it. */
+data class CheckedRow(val project: String, val framework: String, val id: String, val target: String, val restoreOnly: Boolean)
 
 /** Aggregate checkbox state of a section's outdated rows. */
 internal enum class CheckState { NONE, SOME, ALL }
@@ -51,7 +54,7 @@ internal object PackageListLogic {
         for (section in sections.sortedWith(compareBy({ it.projectName.lowercase() }, { it.framework }))) {
             val packages = section.deps
                 .sortedWith(compareByDescending<DepRow> { it.outdated }.thenBy { it.name.lowercase() })
-                .map { PackageEntry(it, section.upgradeTarget) }
+                .map { PackageEntry(it, section.upgradeTarget, section.framework) }
             entries.add(HeaderEntry("${section.projectName}  ·  ${section.framework}", packages))
             entries.addAll(packages)
         }
@@ -74,16 +77,12 @@ internal object PackageListLogic {
         return outdated.isNotEmpty() && outdated.all { it.checked }
     }
 
-    /** Checked outdated packages grouped by upgrade-target path, names deduped. */
-    fun checkedByTarget(entries: List<ListEntry>): Map<String, List<String>> {
-        val result = LinkedHashMap<String, MutableList<String>>()
-        for (entry in entries) {
-            if (entry is PackageEntry && entry.checked && entry.dep.outdated) {
-                result.getOrPut(entry.target) { mutableListOf() }.add(entry.dep.name)
-            }
-        }
-        return result.mapValues { it.value.distinct() }
-    }
+    /** Checked outdated rows, one per project + framework + package. */
+    fun checkedRows(entries: List<ListEntry>): List<CheckedRow> =
+        entries.filterIsInstance<PackageEntry>()
+            .filter { it.checked && it.dep.outdated }
+            .map { CheckedRow(it.target, it.framework, it.dep.name, it.dep.newVersion, it.dep.restoreOnly) }
+            .distinct()
 
     /** Next checkbox state for a selection: if any is unchecked, check all; else uncheck all. */
     fun nextToggleState(selectedOutdated: List<PackageEntry>): Boolean =
@@ -117,7 +116,7 @@ internal object PackageListLogic {
 }
 
 /**
- * Grouped package list mirroring the `dotnet outdated` CLI / Rider NuGet view: a
+ * Grouped package list mirroring Rider's NuGet view: a
  * `ProjectName · framework` header per project+TFM section, then one row per package with a
  * checkbox — `Name · Current` on the left, new version (colored by severity) right-aligned.
  * Check multiple outdated packages to drive "Update Selected". Type to speed-search by name.
@@ -193,8 +192,8 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
         onSelectionChanged()
     }
 
-    /** Checked outdated packages grouped by the project path to upgrade against. */
-    fun checkedByTarget(): Map<String, List<String>> = PackageListLogic.checkedByTarget(entries())
+    /** Checked outdated rows for the upgrade. */
+    fun checkedRows(): List<CheckedRow> = PackageListLogic.checkedRows(entries())
 
     private fun toggleCheckedForSelection() {
         val targets = ArrayList<PackageEntry>()
@@ -278,6 +277,7 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
                 val bg = if (selected) list.selectionBackground else list.background
                 rowPanel.isOpaque = true
                 rowPanel.background = bg
+                rowPanel.toolTipText = entry.dep.note
                 checkBox.background = bg
                 checkBox.isEnabled = entry.dep.outdated // only outdated packages are checkable
                 checkBox.isSelected = entry.checked && entry.dep.outdated
@@ -301,6 +301,7 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
                     val attr = when {
                         entry.dep.outdated && entry.dep.color != SeverityColor.NONE ->
                             SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, entry.dep.color.toJBColor())
+                        !entry.dep.outdated -> SimpleTextAttributes.GRAYED_ATTRIBUTES // newer, but outside the range
                         selected -> SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, list.selectionForeground)
                         else -> SimpleTextAttributes.REGULAR_ATTRIBUTES
                     }

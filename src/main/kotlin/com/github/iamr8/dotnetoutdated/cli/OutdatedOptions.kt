@@ -1,30 +1,30 @@
 package com.github.iamr8.dotnetoutdated.cli
 
-/** `dotnet outdated --pre-release` values. */
+/** Pre-release policy. */
 enum class PreRelease { Auto, Always, Never }
 
-/** `dotnet outdated --version-lock` values. */
+/** Version lock. */
 enum class VersionLock { None, Major, Minor }
 
-/** `dotnet outdated --nuget-cred-log-level` values. */
+/** NuGet credential log level. */
 enum class CredLogLevel { Debug, Verbose, Information, Minimal, Warning, Error }
 
 /**
- * Every configurable `dotnet outdated` argument the plugin exposes. Plain, mutable, pure — so
- * command building is unit-testable and the type can be bound to the options form and persisted
+ * Every scan and upgrade option the plugin exposes. Plain, mutable, pure — so the engine request
+ * building is unit-testable and the type can be bound to the options form and persisted
  * directly (a no-arg constructor is synthesized because all parameters have defaults).
  *
- * Defaults differ from the CLI where it makes the plugin safer:
- *  - [includeUpToDate] = false  (off by default — listing every package is heavy on big solutions)
+ * Defaults chosen for safety:
+ *  - [includeUpToDate] = false  (off by default - listing every package is heavy on big solutions)
  *  - [ignoreFailedSources] = true  (a single flaky feed shouldn't abort the whole scan)
- *  - [idleTimeoutSeconds] = 300  (CLI default 120 can trip on slow/private feeds)
+ *  - [idleTimeoutSeconds] = 300  (slow private feeds)
  */
 data class OutdatedOptions(
     // Which packages are analyzed
     var includeAutoReferences: Boolean = false,
     var transitive: Boolean = false,
     var transitiveDepth: Int = 1,
-    /** List every package (adds `-utd`, enables offline listing). Off by default — heavy on big solutions. */
+    /** List every package, including up-to-date ones. Off by default. */
     var includeUpToDate: Boolean = false,
 
     // Version policy
