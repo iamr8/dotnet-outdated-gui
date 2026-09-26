@@ -20,3 +20,8 @@ updates:
     schedule:
       interval: weekly
     labels: ["dependencies", "ci"]
+    ignore:
+      # codeql-action's `v4` tag points at a release-branch commit that no v4.x.y tag shares, so
+      # Dependabot swaps `@v4` for an exact version and then bumps every patch. Stay on the major.
+      - dependency-name: "github/codeql-action"
+        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
