@@ -129,7 +129,12 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     private fun workDir(): String = solution?.solutionPath?.let { File(it).parent } ?: basePath()
 
     private fun discoverSolution() {
-        solution = SolutionModel.discover(File(basePath()), project.name)
+        try {
+            solution = SolutionModel.discover(File(basePath()), project.name)
+        } catch (e: IOException) {
+            // The window must still open. The scope stays empty and the next scan reads the file again.
+            LOG.warn("${PluginText.NAME}: could not read the solution file, the scope stays empty until the next scan", e)
+        }
         includedProjects = solution?.projects?.map { it.name }?.toMutableSet() ?: linkedSetOf()
         toolbar.updateActionsAsync()
     }
