@@ -80,6 +80,8 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     private var skippedProjects = 0
     private var busy = false
     private var listedOnce = false
+    /** True while the solution file is unreadable, so its balloon shows once per failure streak. Declared before `init`. */
+    @Volatile private var solutionUnreadable = false
 
     init {
         add(toolbar.component, BorderLayout.NORTH)
@@ -131,9 +133,10 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     private fun discoverSolution() {
         try {
             solution = SolutionModel.discover(File(basePath()), project.name)
+            solutionUnreadable = false
         } catch (e: IOException) {
             // The window must still open. The scope stays empty and the next scan reads the file again.
-            LOG.warn("${PluginText.NAME}: could not read the solution file, the scope stays empty until the next scan", e)
+            solutionReadFailed(e, known = false)
         }
         includedProjects = solution?.projects?.map { it.name }?.toMutableSet() ?: linkedSetOf()
         toolbar.updateActionsAsync()
@@ -151,12 +154,28 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         val fresh = try {
             SolutionModel.discover(File(basePath()), project.name)
         } catch (e: IOException) {
-            LOG.warn("${PluginText.NAME}: could not read the solution file, using the last known projects", e)
+            solutionReadFailed(e, known = known != null)
             return known
         }
+        solutionUnreadable = false
         includedProjects = mergeScope(includedProjects, before, fresh?.projects?.map { it.name }.orEmpty())
         solution = fresh
         return fresh
+    }
+
+    /**
+     * The solution file cannot be read (permission, a sharing lock): an environment failure, so a
+     * balloon, not an error report. Shown once per failure streak; the next good read resets it.
+     * Safe from any thread: [notifyFailure] posts to the EDT.
+     */
+    private fun solutionReadFailed(e: IOException, known: Boolean) {
+        if (solutionUnreadable) {
+            LOG.warn("${PluginText.NAME}: could not read the solution file again", e)
+            return
+        }
+        solutionUnreadable = true
+        val effect = if (known) "the scan uses the last known projects" else "the scan looks for project files in the folder instead"
+        notifyFailure("Could not read the solution file", listOf(ScanFailure("Solution", effect, e.toString())), updateStatus = false)
     }
 
     private fun scopeLabel(): String {

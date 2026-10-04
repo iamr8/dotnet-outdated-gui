@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read again before each scan and each upgrade. Projects you left out of the **Scope** stay out.
 - The project search no longer freezes the IDE, and a failure there no longer leaves the toolbar
   disabled. It runs in the background with the scan. A `.cs` file it cannot read is skipped.
-  A solution file it cannot read no longer breaks the tool window or the scan.
+  A solution file it cannot read no longer breaks the tool window or the scan. A balloon says so once.
 
 ## [0.1.4] - 2026-08-29
 
