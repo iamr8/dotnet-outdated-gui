@@ -106,6 +106,43 @@ class OutdatedPanelLogicTest {
         assertEquals(paths, enginePaths(paths, trusted = true))
     }
 
+    // --- mergeScope -----------------------------------------------------------
+
+    @Test
+    fun `a project added since the last scan is included`() {
+        // Break: mergeScope returns oldIncluded unchanged (new projects are never added).
+        val result = mergeScope(setOf("A", "B"), listOf("A", "B"), listOf("A", "B", "C"))
+        assertEquals(listOf("A", "B", "C"), result.toList())
+    }
+
+    @Test
+    fun `a project the user excluded stays excluded when another one is added`() {
+        // Break: mergeScope includes every new name, so the excluded project comes back.
+        val result = mergeScope(setOf("A", "C"), listOf("A", "B", "C"), listOf("A", "B", "C", "D"))
+        assertEquals(listOf("A", "C", "D"), result.toList())
+    }
+
+    @Test
+    fun `a removed project leaves the scope`() {
+        // Break: mergeScope keeps names that are no longer in the solution.
+        val result = mergeScope(setOf("A", "B"), listOf("A", "B"), listOf("A"))
+        assertEquals(listOf("A"), result.toList())
+    }
+
+    @Test
+    fun `the first discovery includes every project`() {
+        // Break: mergeScope keeps only oldIncluded, so a solution found late starts empty.
+        val result = mergeScope(emptySet(), emptyList(), listOf("A", "B"))
+        assertEquals(listOf("A", "B"), result.toList())
+    }
+
+    @Test
+    fun `when every included project is removed the scope falls back to all`() {
+        // Break: mergeScope returns the empty set, so the scope shows 0 of N.
+        val result = mergeScope(setOf("A"), listOf("A", "B"), listOf("B"))
+        assertEquals(listOf("B"), result.toList())
+    }
+
     // --- internalErrorDetails -------------------------------------------------
 
     @Test

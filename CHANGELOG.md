@@ -43,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Maximum version** accepts a single number (`8` means any 8.x), and the settings page rejects
   text it can't read instead of ignoring it.
 - **Include file-based apps** works on its own; it no longer needs "Find projects in subfolders".
+- A project added to the solution after the tool window opened is now found. The project list is
+  read again before each scan and each upgrade. Projects you left out of the **Scope** stay out.
+- The project search no longer freezes the IDE, and a failure there no longer leaves the toolbar
+  disabled. It runs in the background with the scan.
 
 ## [0.1.4] - 2026-08-29
 
