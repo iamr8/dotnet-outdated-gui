@@ -215,6 +215,10 @@ public sealed class ProjectEvaluator
         var m = item.GetMetadata(metadataName);
         if (m == null) return (null, null);
         if (m.Xml?.Parent is not ProjectItemElement owner) return (null, "version comes from an item definition");
+        // A child element can carry its own Condition (an attribute cannot). The site only records
+        // the owner item's condition, and the edit takes the first matching child, so it could hit
+        // the wrong element.
+        if (m.Xml.Condition.Length > 0) return (null, "the version element has its own condition - edit it by hand");
 
         var identityAttr = owner.Include.Length > 0 ? "Include" : "Update";
         var identity = owner.Include.Length > 0 ? owner.Include : owner.Update;
