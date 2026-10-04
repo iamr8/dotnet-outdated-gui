@@ -84,18 +84,26 @@ public sealed class FeedService : IDisposable
         {
             var settings = Settings.LoadDefaultSettings(projectDir);
             var configured = SettingsUtility.GetEnabledSources(settings).ToList();
-            // A source that NuGet.config also lists keeps its name and credentials.
             var enabled = restoreSources.Count > 0
-                ? restoreSources.Select(r => configured.FirstOrDefault(c => string.Equals(c.Source, r, StringComparison.OrdinalIgnoreCase)) ?? new PackageSource(r)).ToList()
+                ? restoreSources.Select(r => FromProject(r, projectDir, configured)).ToList()
                 : configured;
-            foreach (var extra in additionalSources ?? Array.Empty<string>())
-                if (!enabled.Any(s => string.Equals(s.Source, extra, StringComparison.OrdinalIgnoreCase)))
-                    enabled.Add(new PackageSource(extra));
+            foreach (var extra in (additionalSources ?? Array.Empty<string>()).Select(e => FromProject(e, projectDir, configured)))
+                if (!enabled.Any(s => string.Equals(s.Source, extra.Source, StringComparison.OrdinalIgnoreCase)))
+                    enabled.Add(extra);
             var provider = Repository.Provider.GetCoreV3();
             return new FeedContext(
                 enabled.Select(s => new SourceRepository(s, provider)).ToList(),
                 PackageSourceMapping.GetPackageSourceMapping(settings));
         });
+    }
+
+    /// A source from a project property. A relative folder is relative to the project folder, as in
+    /// restore (not to this process's folder). A source that NuGet.config also lists keeps its name and credentials.
+    private static PackageSource FromProject(string source, string projectDir, IReadOnlyList<PackageSource> configured)
+    {
+        if (!Uri.TryCreate(source, UriKind.Absolute, out _) && !Path.IsPathRooted(source))
+            source = Path.GetFullPath(source, projectDir);
+        return configured.FirstOrDefault(c => string.Equals(c.Source, source, StringComparison.OrdinalIgnoreCase)) ?? new PackageSource(source);
     }
 
     /// All versions of [id] from the allowed sources (flat container: fast). Failures are recorded

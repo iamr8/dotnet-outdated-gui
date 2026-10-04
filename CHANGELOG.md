@@ -49,9 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A version shared by several projects is now checked in each project's own NuGet.config and
   sources, not only those of the first project.
 - `RestoreSources` in a project now replaces the NuGet.config sources, as restore does.
-  `RestoreAdditionalProjectSources` still adds to them.
+  `RestoreAdditionalProjectSources` still adds to them. A relative folder in either one is
+  relative to the project folder.
 - Floating versions (`2.*`) now update in projects whose lock file has any name
-  (`NuGetLockFilePath`, `packages.<project>.lock.json`), not only `packages.lock.json`.
+  (`NuGetLockFilePath`, `packages.<project>.lock.json`), not only `packages.lock.json`. Only the
+  projects of the checked floating packages are re-resolved.
 - A package is marked with the failed source when its version list loads but its metadata call
   fails. Before, the row was hidden.
 - A version in a child element with its own condition (`<Version Condition="...">`) is skipped

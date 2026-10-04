@@ -362,6 +362,30 @@ public class ScanTests
         Assert.Equal("9.0.0", Row(r, "Polly").GetProperty("target").GetString()); // config has 9.0.0, the project's source adds 7.2.4
     }
 
+    // Break: resolve a relative RestoreSources / RestoreAdditionalProjectSources entry against the helper's folder, not the project's.
+    [Theory]
+    [InlineData("RestoreSources")]
+    [InlineData("RestoreAdditionalProjectSources")]
+    public void RelativeSourceEntryIsResolvedAgainstTheProjectFolder(string property)
+    {
+        var dir = FixtureSolution.NewDir();
+        FixtureFeed.Create(Path.Combine(dir, "b"), ("Polly", new[] { "7.0.0", "7.2.4" }));
+        // No NuGet.config source: the project's own entry is the only way to reach the feed. The helper
+        // runs from `dir`, the project from `dir/P`, so "../b/feed" only points at the feed from there.
+        FixtureSolution.WriteNuGetConfig(dir);
+        FixtureSolution.Write(dir, "P/P.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFramework>{FixtureSolution.Tfm}</TargetFramework><{property}>../b/feed</{property}></PropertyGroup>
+  <ItemGroup><PackageReference Include=""Polly"" Version=""7.0.0"" /></ItemGroup>
+</Project>");
+        var project = Path.Combine(dir, "P/P.csproj");
+        FixtureSolution.Restore(project);
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project });
+
+        Assert.Equal("7.2.4", Row(r, "Polly").GetProperty("target").GetString());
+    }
+
     [Fact]
     public void ProjectEvaluationFailureAppearsInFailuresOthersStillScan()
     {
