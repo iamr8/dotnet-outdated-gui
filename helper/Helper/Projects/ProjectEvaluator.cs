@@ -206,8 +206,11 @@ public sealed class ProjectEvaluator
             }
         }
 
-        var sources = (p.GetPropertyValue("RestoreSources") + ";" + p.GetPropertyValue("RestoreAdditionalProjectSources"))
-            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        // Not merged: RestoreSources replaces the NuGet.config sources, RestoreAdditionalProjectSources
+        // adds to them. The SDK leaves RestoreSources empty and fills only the additional one (its
+        // library-packs folder), so a normal project keeps its config sources.
+        var sources = SplitList(p.GetPropertyValue("RestoreSources"));
+        var additional = SplitList(p.GetPropertyValue("RestoreAdditionalProjectSources"));
 
         return new EvaluatedTfm(
             tfm,
@@ -217,8 +220,12 @@ public sealed class ProjectEvaluator
             NullIfEmpty(p.GetPropertyValue("DirectoryPackagesPropsPath")),
             items,
             sources,
-            NullIfEmpty(p.GetPropertyValue("NuGetPackageRoot")));
+            NullIfEmpty(p.GetPropertyValue("NuGetPackageRoot")),
+            additional);
     }
+
+    private static List<string> SplitList(string value) =>
+        value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
     private static (ValueSite?, string?) Site(Project p, ProjectItem item, string metadataName)
     {

@@ -75,14 +75,20 @@ public sealed class FeedService : IDisposable
 
     public IReadOnlyList<SourceFailureInfo> Failures => _failures.Values.ToList();
 
-    public FeedContext Context(string projectDir, IReadOnlyList<string> extraSources)
+    /// [restoreSources] (the project's RestoreSources) replace the NuGet.config sources when there are any;
+    /// [additionalSources] (RestoreAdditionalProjectSources) are added to whichever sources apply.
+    public FeedContext Context(string projectDir, IReadOnlyList<string> restoreSources, IReadOnlyList<string>? additionalSources = null)
     {
-        var key = projectDir + "|" + string.Join(";", extraSources);
+        var key = projectDir + "|" + string.Join(";", restoreSources) + "|" + string.Join(";", additionalSources ?? Array.Empty<string>());
         return _contexts.GetOrAdd(key, _ =>
         {
             var settings = Settings.LoadDefaultSettings(projectDir);
-            var enabled = SettingsUtility.GetEnabledSources(settings).ToList();
-            foreach (var extra in extraSources)
+            var configured = SettingsUtility.GetEnabledSources(settings).ToList();
+            // A source that NuGet.config also lists keeps its name and credentials.
+            var enabled = restoreSources.Count > 0
+                ? restoreSources.Select(r => configured.FirstOrDefault(c => string.Equals(c.Source, r, StringComparison.OrdinalIgnoreCase)) ?? new PackageSource(r)).ToList()
+                : configured;
+            foreach (var extra in additionalSources ?? Array.Empty<string>())
                 if (!enabled.Any(s => string.Equals(s.Source, extra, StringComparison.OrdinalIgnoreCase)))
                     enabled.Add(new PackageSource(extra));
             var provider = Repository.Provider.GetCoreV3();

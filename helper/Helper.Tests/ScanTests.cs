@@ -321,6 +321,45 @@ public class ScanTests
         Assert.Contains("'private' failed", row.GetProperty("reason").GetString());
     }
 
+    private static (string dir, string project) SourcePropertySetup(string property)
+    {
+        var dir = FixtureSolution.NewDir();
+        var configFeed = FixtureFeed.Create(Path.Combine(dir, "a"), ("Polly", new[] { "7.0.0", "9.0.0" }));
+        var projectFeed = FixtureFeed.Create(Path.Combine(dir, "b"), ("Polly", new[] { "7.0.0", "7.2.4" }));
+        FixtureSolution.WriteNuGetConfig(dir, ("config", configFeed));
+        FixtureSolution.Write(dir, "P/P.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFramework>{FixtureSolution.Tfm}</TargetFramework><{property}>{projectFeed}</{property}></PropertyGroup>
+  <ItemGroup><PackageReference Include=""Polly"" Version=""7.0.0"" /></ItemGroup>
+</Project>");
+        var project = Path.Combine(dir, "P/P.csproj");
+        FixtureSolution.Restore(project);
+        return (dir, project);
+    }
+
+    // Break: add RestoreSources to the NuGet.config sources instead of replacing them (9.0.0 comes back).
+    [Fact]
+    public void RestoreSourcesReplaceTheConfigSources()
+    {
+        var (dir, project) = SourcePropertySetup("RestoreSources");
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project });
+
+        Assert.Equal("7.2.4", Row(r, "Polly").GetProperty("target").GetString());
+    }
+
+    // Break: drop RestoreAdditionalProjectSources, or let it replace the config sources.
+    [Fact]
+    public void RestoreAdditionalProjectSourcesAddToTheConfigSources()
+    {
+        var (dir, project) = SourcePropertySetup("RestoreAdditionalProjectSources");
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project });
+
+        Assert.Equal("9.0.0", Row(r, "Polly").GetProperty("target").GetString()); // config has 9.0.0, the project's source adds 7.2.4
+    }
+
     [Fact]
     public void ProjectEvaluationFailureAppearsInFailuresOthersStillScan()
     {

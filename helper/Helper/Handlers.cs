@@ -87,7 +87,7 @@ public sealed class Handlers
             // A new instance per scan, not one for the process: a long-lived FeedService keeps
             // stale source failures and settings (see the comment on FeedService itself).
             using var feeds = new FeedService(o);
-            var groups = work.GroupBy(w => (Dir: Path.GetDirectoryName(w.P.Path)!, Sources: string.Join(";", w.T.RestoreSources), Id: w.A.Id.ToLowerInvariant())).ToList();
+            var groups = work.GroupBy(w => (Dir: Path.GetDirectoryName(w.P.Path)!, Sources: FeedKey.Sources(w.T), Id: w.A.Id.ToLowerInvariant())).ToList();
 
             // Contexts are primed one at a time, before the parallel fetch loop, keyed by (Dir,
             // Sources) - both plain strings, so this actually dedupes (a Distinct() over tuples
@@ -103,7 +103,7 @@ public sealed class Handlers
             {
                 try
                 {
-                    feeds.Context(group.Key.Dir, group.First().T.RestoreSources);
+                    feeds.Context(group.Key.Dir, group.First().T.RestoreSources, group.First().T.AdditionalSources);
                 }
                 catch (NuGetConfigurationException e)
                 {
@@ -114,7 +114,7 @@ public sealed class Handlers
             var done = 0;
             await Parallel.ForEachAsync(groups, new ParallelOptions { MaxDegreeOfParallelism = 32, CancellationToken = ct }, async (g, token) =>
             {
-                var ctx = feeds.Context(g.Key.Dir, g.First().T.RestoreSources);
+                var ctx = feeds.Context(g.Key.Dir, g.First().T.RestoreSources, g.First().T.AdditionalSources);
                 var versions = await feeds.GetVersionsAsync(ctx, g.First().A.Id, token);
                 var lowest = g.Where(w => w.A.Resolved != null).Select(w => w.A.Resolved!).DefaultIfEmpty().Min();
                 IReadOnlyList<Candidate>? list;
@@ -207,11 +207,11 @@ public sealed class Handlers
 
             // Contexts are primed first, one at a time per (dir, sources) group, so a bad
             // NuGet.config fails fast and translates to UserException in one place - same as Scan.
-            foreach (var group in need.GroupBy(kv => (Dir: Path.GetDirectoryName(kv.Value.ProjectPath)!, Sources: string.Join(";", kv.Value.Tfm.RestoreSources))))
+            foreach (var group in need.GroupBy(kv => (Dir: Path.GetDirectoryName(kv.Value.ProjectPath)!, Sources: FeedKey.Sources(kv.Value.Tfm))))
             {
                 try
                 {
-                    feeds.Context(group.Key.Dir, group.First().Value.Tfm.RestoreSources);
+                    feeds.Context(group.Key.Dir, group.First().Value.Tfm.RestoreSources, group.First().Value.Tfm.AdditionalSources);
                 }
                 catch (NuGetConfigurationException e)
                 {
@@ -222,7 +222,7 @@ public sealed class Handlers
             await Parallel.ForEachAsync(need, new ParallelOptions { MaxDegreeOfParallelism = 32, CancellationToken = ct }, async (kv, token) =>
             {
                 var (id, (projectPath, tfm)) = kv;
-                var ctx = feeds.Context(Path.GetDirectoryName(projectPath)!, tfm.RestoreSources);
+                var ctx = feeds.Context(Path.GetDirectoryName(projectPath)!, tfm.RestoreSources, tfm.AdditionalSources);
                 // GetCandidatesDetailedAsync's own Failed list is scoped to this one id and this one
                 // call - FeedService.Failures is process-wide, keyed only by source name, and would
                 // misattribute a different id's failure on the same source under parallelism.
@@ -246,8 +246,7 @@ public sealed class Handlers
     }
 
     /// The feed group a (project, tfm, id) belongs to: same folder (NuGet.config), same sources, same id.
-    private static string GroupKey(string projectPath, EvaluatedTfm t, string id) =>
-        Path.GetDirectoryName(projectPath) + "|" + string.Join(";", t.RestoreSources) + "|" + id.ToLowerInvariant();
+    private static string GroupKey(string projectPath, EvaluatedTfm t, string id) => FeedKey.Of(projectPath, t, id);
 
     /// One entry per project file: `A/../A/A.csproj` and `A/A.csproj` evaluate to the same Path, and
     /// EditPlanner's `ToDictionary(p => p.Path, OrdinalIgnoreCase)` would throw on the duplicate key.
