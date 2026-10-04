@@ -2,8 +2,11 @@ package com.github.iamr8.nugetextended.cli
 
 import java.io.File
 
-/** A project belonging to the open solution. */
-data class SolutionProject(val name: String, val path: String)
+/** A project belonging to the open solution. [name] is for display only: two projects can share one. */
+data class SolutionProject(val name: String, val path: String) {
+    /** The one identity of a project (scope selection, lookups): its normalized path, never its name. */
+    val key: String get() = path
+}
 
 /** The currently open solution and the projects loaded in it. */
 data class Solution(
@@ -79,7 +82,10 @@ object SolutionModel {
             val relPath = rawRelPath.replace('\\', File.separatorChar)
             val ext = File(relPath).extension.lowercase()
             when {
-                ext in projectExts -> result.putIfAbsent(name, SolutionProject(name, File(dir, relPath).path))
+                ext in projectExts -> {
+                    val project = SolutionProject(name, File(dir, relPath).normalize().path)
+                    result.putIfAbsent(project.key, project)
+                }
                 ext.endsWith("proj") -> hasUnsupported = true // e.g. .shproj, .vcxproj
             }
         }

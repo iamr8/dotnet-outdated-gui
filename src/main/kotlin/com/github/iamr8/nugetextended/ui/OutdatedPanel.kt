@@ -70,7 +70,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     private val toolbar: ActionToolbar = buildToolbar()
 
     private var solution: Solution? = null
-    /** Names of the solution's projects to include in the view (empty = show everything). */
+    /** [SolutionProject.key]s of the solution's projects to include in the view (empty = show everything). */
     private var includedProjects: MutableSet<String> = linkedSetOf()
     /** Last scan result; the view is built from this. */
     private var allRows: List<PackageSection> = emptyList()
@@ -128,7 +128,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     private fun discoverSolution() {
         solution = SolutionModel.discover(File(basePath()), project.name)
-        includedProjects = solution?.projects?.map { it.name }?.toMutableSet() ?: linkedSetOf()
+        includedProjects = solution?.projects?.map { it.key }?.toMutableSet() ?: linkedSetOf()
         toolbar.updateActionsAsync()
     }
 
@@ -224,7 +224,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         if (projects.isEmpty()) return
         val panel = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS); border = JBUI.Borders.empty(8) }
         val boxes = projects.map { p ->
-            JBCheckBox(p.name, p.name in includedProjects).also { panel.add(it) }
+            JBCheckBox(p.name, p.key in includedProjects).also { it.toolTipText = p.path; panel.add(it) }
         }
         val popup = JBPopupFactory.getInstance()
             .createComponentPopupBuilder(JBScrollPane(panel), boxes.firstOrNull())
@@ -235,9 +235,9 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         popup.setFinalRunnable {
             var next = projects.indices
                 .filter { boxes[it].isSelected }
-                .map { projects[it].name }
+                .map { projects[it].key }
                 .toMutableSet()
-            if (next.isEmpty()) next = projects.map { it.name }.toMutableSet()
+            if (next.isEmpty()) next = projects.map { it.key }.toMutableSet()
             if (next != before) {
                 includedProjects = next
                 toolbar.updateActionsAsync()
@@ -403,8 +403,8 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         val trusted = projectTrusted()
         val restoreOff = !restoreAllowed(trusted, options.noRestore)
         // Every solution project may share a version with a checked row, so all are consumers.
-        val allNames = solution?.projects?.map { it.name }?.toSet().orEmpty()
-        val allPaths = enginePaths(ScanPlan.projectPaths(solution, allNames, File(basePath()), options.recursive, options.includeFileBasedApps), trusted)
+        val allIncluded = solution?.projects?.map { it.key }?.toSet().orEmpty()
+        val allPaths = enginePaths(ScanPlan.projectPaths(solution, allIncluded, File(basePath()), options.recursive, options.includeFileBasedApps), trusted)
         val rows = checked.filterNot { it.restoreOnly }.map { UpgradeRow(it.project, it.framework, it.id, it.target) }
         val (restoreOnly, restoreOnlyRowCount) = restoreOnlyPlan(checked, restoreOff)
         if (restoreOff && checked.any { it.restoreOnly }) {

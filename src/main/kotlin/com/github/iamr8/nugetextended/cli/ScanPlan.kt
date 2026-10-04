@@ -17,13 +17,14 @@ object ScanPlan {
 
     fun projectPaths(
         solution: Solution?,
+        /** [SolutionProject.key]s of the projects to scan (not names: two projects can share a name). */
         includedProjects: Set<String>,
         baseDir: File,
         recursive: Boolean,
         includeFileBasedApps: Boolean,
     ): List<String> {
         val projects = if (solution != null && solution.projects.isNotEmpty()) {
-            solution.projects.filter { it.name in includedProjects }.ifEmpty { solution.projects }.map { it.path }
+            solution.projects.filter { it.key in includedProjects }.ifEmpty { solution.projects }.map { it.path }
         } else {
             find(baseDir, recursive) { it.extension.lowercase() in projectExts }
         }
