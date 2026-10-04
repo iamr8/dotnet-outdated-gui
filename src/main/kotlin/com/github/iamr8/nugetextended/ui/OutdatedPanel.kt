@@ -344,15 +344,16 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         if (outcome == RiderRestore.Outcome.RIDER_RESTORED) changed.forEach(engine::markChanged) // Rider rewrote their obj files
         if (ours.isEmpty()) return emptyList()
         indicator.text = "Restoring ${ours.size} project(s)…"
-        return restore(ours, options, indicator, afterUpgrade)
+        // [alwaysOurs] are the floating projects: only they are restored with --force-evaluate.
+        return restore(ours, options, indicator, afterUpgrade, forceEvaluate = alwaysOurs)
     }
 
     /** Runs `dotnet restore`, then tells the engine: restore rewrites the obj folder's `*.nuget.g.props`, which evaluation imports. */
-    private fun restore(paths: List<String>, options: OutdatedOptions, indicator: ProgressIndicator, afterUpgrade: Boolean): List<ScanFailure> {
+    private fun restore(paths: List<String>, options: OutdatedOptions, indicator: ProgressIndicator, afterUpgrade: Boolean, forceEvaluate: List<String>): List<ScanFailure> {
         val failures = try {
             restorer.restore(
                 paths, solution?.solutionPath, solution?.projects?.map { it.path }.orEmpty(),
-                options.runtime, workDir(), restoreTimeoutMs(options), indicator, afterUpgrade,
+                options.runtime, workDir(), restoreTimeoutMs(options), indicator, afterUpgrade, forceEvaluate,
             )
         } catch (e: ExecutionException) {
             // dotnet could not even be started - an environment failure, not a plugin bug.

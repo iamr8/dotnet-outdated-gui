@@ -7,17 +7,18 @@ class RestoreCommandTest {
     private val sln = "/r/App.sln"
     private val all = listOf("/r/A/A.csproj", "/r/B/B.csproj")
 
+    // Break: pass --force-evaluate on every post-upgrade restore, so a solution restore re-resolves every project.
     @Test
-    fun solutionCallWhenItCoversEveryProject() {
+    fun editOnlyUpgradeRestoresTheSolutionWithoutForceEvaluate() {
         val cmds = RestoreCommand.plan("dotnet", all, sln, all, "", afterUpgrade = true)
-        assertEquals(listOf(listOf("dotnet", "restore", sln, "-p:RestoreLockedMode=false", "--force-evaluate")), cmds)
+        assertEquals(listOf(listOf("dotnet", "restore", sln, "-p:RestoreLockedMode=false")), cmds)
     }
 
     @Test
     fun perProjectWhenAProjectIsOutsideTheSolution() {
         val cmds = RestoreCommand.plan("dotnet", all + "/r/X/X.csproj", sln, all, "", afterUpgrade = true)
         assertEquals(3, cmds.size)
-        assertEquals(listOf("dotnet", "restore", "/r/X/X.csproj", "-p:RestoreLockedMode=false", "--force-evaluate"), cmds[2])
+        assertEquals(listOf("dotnet", "restore", "/r/X/X.csproj", "-p:RestoreLockedMode=false"), cmds[2])
     }
 
     @Test
@@ -26,15 +27,34 @@ class RestoreCommandTest {
         assertEquals(listOf("/r/A/A.csproj", "/r/B/B.csproj"), cmds.map { it[2] })
     }
 
-    // Break: --force-evaluate only when a sibling packages.lock.json exists (the old file name check).
+    // Break: --force-evaluate only when a sibling packages.lock.json exists (a lock file can have any name).
     @Test
-    fun afterUpgradeAlwaysForcesEvaluateAndRuntimeAddsRid() {
-        // No lock file is looked up: a floating upgrade edits nothing, and a lock file can have any name.
-        val cmds = RestoreCommand.plan("dotnet", listOf("/r/A/A.csproj"), null, emptyList(), "linux-x64", afterUpgrade = true)
+    fun floatingProjectGetsItsOwnForcedRestoreAndRuntimeAddsRid() {
+        val cmds = RestoreCommand.plan("dotnet", listOf("/r/A/A.csproj"), null, emptyList(), "linux-x64", afterUpgrade = true, forceEvaluate = listOf("/r/A/A.csproj"))
         assertEquals(
             listOf("dotnet", "restore", "/r/A/A.csproj", "-p:RestoreLockedMode=false", "--force-evaluate", "-r", "linux-x64"),
             cmds.single(),
         )
+    }
+
+    // Break: force the solution restore when any project is floating (it would also move projects the user did not pick).
+    @Test
+    fun floatingProjectIsRestoredAloneAndTheSolutionRestoreIsNotForced() {
+        val cmds = RestoreCommand.plan("dotnet", all, sln, all, "", afterUpgrade = true, forceEvaluate = listOf("/r/A/../A/A.csproj"))
+        assertEquals(
+            listOf(
+                listOf("dotnet", "restore", sln, "-p:RestoreLockedMode=false"),
+                listOf("dotnet", "restore", "/r/A/A.csproj", "-p:RestoreLockedMode=false", "--force-evaluate"),
+            ),
+            cmds,
+        )
+    }
+
+    @Test
+    fun onlyFloatingProjectsMeansNoSolutionCall() {
+        val cmds = RestoreCommand.plan("dotnet", all, sln, all, "", afterUpgrade = true, forceEvaluate = all)
+        assertEquals(listOf("/r/A/A.csproj", "/r/B/B.csproj"), cmds.map { it[2] })
+        assertEquals(listOf(true, true), cmds.map { "--force-evaluate" in it })
     }
 
     @Test
@@ -54,7 +74,7 @@ class RestoreCommandTest {
     fun scanTimeRestoreKeepsTheLockFileRules() {
         // Only an upgrade changes versions on purpose; a scan-time restore must not rewrite a
         // locked-mode lock file.
-        val cmds = RestoreCommand.plan("dotnet", listOf("/r/A/A.csproj"), null, emptyList(), "linux-x64", afterUpgrade = false)
+        val cmds = RestoreCommand.plan("dotnet", listOf("/r/A/A.csproj"), null, emptyList(), "linux-x64", afterUpgrade = false, forceEvaluate = listOf("/r/A/A.csproj"))
         assertEquals(listOf("dotnet", "restore", "/r/A/A.csproj", "-r", "linux-x64"), cmds.single())
     }
 }
