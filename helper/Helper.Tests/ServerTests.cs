@@ -47,6 +47,25 @@ public class ServerTests
         Assert.Equal("cancelled", r.GetProperty("error").GetProperty("kind").GetString());
     }
 
+    // Break: drop the ValueKind checks in the "cancel" case of Server.RunAsync (the helper then exits).
+    [Theory]
+    [InlineData("{\"id\":7,\"method\":\"cancel\"}")]
+    [InlineData("{\"id\":7,\"method\":\"cancel\",\"params\":null}")]
+    [InlineData("{\"id\":7,\"method\":\"cancel\",\"params\":[]}")]
+    [InlineData("{\"id\":7,\"method\":\"cancel\",\"params\":{}}")]
+    [InlineData("{\"id\":7,\"method\":\"cancel\",\"params\":{\"targetId\":null}}")]
+    [InlineData("{\"id\":7,\"method\":\"cancel\",\"params\":{\"targetId\":\"3\"}}")]
+    [InlineData("{\"id\":7,\"method\":\"cancel\",\"params\":{\"targetId\":1.5}}")]
+    public void MalformedCancelIsAnErrorNotACrash(string line)
+    {
+        using var h = Start();
+        h.SendRaw(line);
+        var r = h.ReadResponse(7, 5_000);
+        Assert.Equal("user", r.GetProperty("error").GetProperty("kind").GetString());
+        var ping = h.Request("ping", new { }, 5_000);
+        Assert.True(ping.GetProperty("result").GetProperty("pong").GetBoolean());
+    }
+
     [Fact]
     public void SecondRequestIsBusyWhileOneRuns()
     {
