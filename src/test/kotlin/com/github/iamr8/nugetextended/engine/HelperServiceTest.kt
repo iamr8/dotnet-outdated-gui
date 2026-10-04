@@ -1,12 +1,13 @@
 package com.github.iamr8.nugetextended.engine
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * [HelperService.requeueOnFailure] is the pure part of `flushChanges`'s fix: it needs no
- * [HelperService] instance (and so no `ApplicationManager`), just a mutable set and an action.
+ * [HelperService.requeueOnFailure] and [RestartOnce] are the pure parts of `flushChanges` and
+ * `call`: they need no [HelperService] instance (and so no `ApplicationManager`).
  */
 class HelperServiceTest {
     @Test
@@ -33,5 +34,28 @@ class HelperServiceTest {
 
         assertEquals("ok", result)
         assertTrue(changed.isEmpty())
+    }
+
+    // Break: RestartOnce.allow ignores `restarted` (a second crash in one call would retry again).
+    @Test
+    fun restartsOnceThenGivesUp() {
+        val restart = RestartOnce()
+
+        assertTrue(restart.allow(disposed = false))
+        assertFalse(restart.allow(disposed = false))
+        assertFalse(restart.allow(disposed = false))
+    }
+
+    // Break: RestartOnce.allow ignores `disposed` (a closed project would start a helper again).
+    @Test
+    fun neverRestartsAfterDispose() {
+        assertFalse(RestartOnce().allow(disposed = true))
+    }
+
+    // Break: RestartOnce keeps its flag in a shared place (a later call would get no retry).
+    @Test
+    fun eachCallGetsItsOwnRestart() {
+        assertTrue(RestartOnce().allow(disposed = false))
+        assertTrue(RestartOnce().allow(disposed = false))
     }
 }
