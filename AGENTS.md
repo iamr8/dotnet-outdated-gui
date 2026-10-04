@@ -134,8 +134,8 @@ UI behavior that no check can cover is confirmed by installing the built zip in 
   milestone) and list the PRs merged since the last stable `v*` tag. For local testing: download the
   zip, install via Settings → Plugins → ⚙ → Install from Disk; uninstall it before installing a
   Marketplace release.
-  When `release.yml` ships `v<VERSION>`, its last step deletes that version's EAP pre-releases and
-  their tags.
+  When `release.yml` ships `v<VERSION>`, its last step deletes every EAP pre-release (and tag) whose
+  target version is at or below `<VERSION>`.
 - **Release model**: branch-based.
   - `main` = development; `build.yml` builds + verifies + publishes an EAP pre-release (above).
     It never publishes to the Marketplace.
