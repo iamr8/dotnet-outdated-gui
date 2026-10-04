@@ -204,6 +204,8 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         val total = allRows.sumOf { it.deps.size }
         val projects = allRows.map { it.projectName }.distinct().size
         val outdated = allRows.sumOf { s -> s.deps.count { it.outdated } }
+        val blocked = allRows.sumOf { s -> s.deps.count { it.blocked != null } }
+        val blockedText = if (blocked > 0) ", $blocked blocked by a shared version" else ""
         val skipped = if (skippedProjects > 0) " ($skippedProjects skipped)" else ""
         setStatus(
             when {
@@ -211,8 +213,8 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
                 total == 0 && skippedProjects == 0 -> "No NuGet packages found."
                 total == 0 -> "No packages listed$skipped."
                 !updatesChecked -> "$total package(s) in $projects project(s)$skipped. Press Check for Updates."
-                outdated == 0 -> "$total package(s) in $projects project(s) — all up to date$skipped."
-                else -> "$total package(s) in $projects project(s), $outdated outdated$skipped."
+                outdated == 0 && blocked == 0 -> "$total package(s) in $projects project(s) — all up to date$skipped."
+                else -> "$total package(s) in $projects project(s), $outdated outdated$blockedText$skipped."
             },
         )
     }

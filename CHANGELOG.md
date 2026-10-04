@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Versions in properties (`Version="$(PollyVersion)"`): the property is updated, and other packages
   that share it are listed before anything changes.
+- A package that shares a version property with another package is blocked when the other package
+  has no such version. The row cannot be checked, its name shows in red, and the info icon says why.
 - An upgrade plan before any change: files, shared versions, skipped packages. One Undo reverts all
   files.
 - Floating versions (`2.*`) update through a restore, with no file edit.

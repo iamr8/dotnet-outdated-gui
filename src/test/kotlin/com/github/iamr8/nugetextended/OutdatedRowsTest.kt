@@ -123,4 +123,23 @@ class OutdatedRowsTest {
         val sections = OutdatedRows.fromScan(result(PackageRow("Polly", "1.0.0", "1.0.0")), emptyList(), listOf("poll"))
         assertTrue(sections.isEmpty())
     }
+
+    // Break: toDep ignores `blocked`, so the row stays checkable.
+    @Test
+    fun blockedRowIsNotCheckableButKeepsItsVersion() {
+        val why = "Lib.Y has no version 5.0.2."
+        val dep = OutdatedRows.toDep(PackageRow("Lib.X", "5.0.1", "5.0.1", "5.0.2", "Patch", blocked = why))
+        assertFalse(dep.outdated)
+        assertEquals("5.0.2", dep.newVersion)
+        assertEquals(why, dep.blocked)
+        assertEquals(why, dep.note)
+    }
+
+    // Break: fromScan drops a blocked row as if it had no target.
+    @Test
+    fun blockedRowStaysInTheList() {
+        val row = PackageRow("Lib.X", "5.0.1", "5.0.1", "5.0.2", "Patch", blocked = "Lib.Y has no version 5.0.2.")
+        val deps = OutdatedRows.fromScan(result(row), emptyList(), emptyList()).single().deps
+        assertEquals(listOf("Lib.X"), deps.map { it.name })
+    }
 }

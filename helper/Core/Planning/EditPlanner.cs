@@ -9,7 +9,7 @@ namespace NuGetExtended.Core.Planning;
 
 public static class EditPlanner
 {
-    private sealed record Consumer(string Project, EvaluatedTfm Tfm, string Id, string? Requested);
+    internal sealed record Consumer(string Project, EvaluatedTfm Tfm, string Id, string? Requested);
 
     private sealed record Repo(string Root, IReadOnlyList<string> Outside)
     {
@@ -202,9 +202,9 @@ public static class EditPlanner
         return (central.VersionSite, central.VersionSite == null ? (central.SiteProblem ?? "no version is set for this package") : null, false, true);
     }
 
-    /// Every consumer of every site, computed once, and the site itself by key. Shared by [Plan]
-    /// and [IdsNeedingCandidates] so the traversal exists in one place.
-    private static (Dictionary<string, List<Consumer>> Consumers, Dictionary<string, ValueSite> Sites) BuildSiteMap(IReadOnlyList<EvaluatedProject> all)
+    /// Every consumer of every site, computed once, and the site itself by key. Shared by [Plan],
+    /// [IdsNeedingCandidates] and [SharedVersions] so the traversal exists in one place.
+    internal static (Dictionary<string, List<Consumer>> Consumers, Dictionary<string, ValueSite> Sites) BuildSiteMap(IReadOnlyList<EvaluatedProject> all)
     {
         var consumers = new Dictionary<string, List<Consumer>>();
         var sites = new Dictionary<string, ValueSite>();

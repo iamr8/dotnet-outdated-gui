@@ -26,6 +26,8 @@ data class PackageRow(
     val transitive: Boolean = false,
     val autoReferenced: Boolean = false,
     val reason: String? = null,
+    /** Why [target] cannot be applied: another package on the same version site lacks it. */
+    val blocked: String? = null,
 )
 
 data class FrameworkRows(val framework: String = "", val packages: List<PackageRow> = emptyList())

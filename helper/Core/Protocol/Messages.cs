@@ -23,7 +23,8 @@ public sealed record ResponseLine(int Id, object? Result, ErrorInfo? Error);
 public sealed record ScanParams(string SolutionDir, IReadOnlyList<string> Projects, ScanOptions Options);
 
 public sealed record PackageRow(string Id, string Requested, string? Resolved, string? Target, string Severity,
-    string? Capped, bool RestoreOnly, bool Transitive, bool AutoReferenced, string? Reason);
+    string? Capped, bool RestoreOnly, bool Transitive, bool AutoReferenced, string? Reason,
+    string? Blocked = null); // Target exists but another id on the same version site lacks it (SharedVersions)
 
 public sealed record FrameworkRows(string Framework, IReadOnlyList<PackageRow> Packages);
 

@@ -77,6 +77,10 @@ public sealed class Handlers
         // failed source would otherwise just vanish under the filter below (IgnoreFailedSources
         // means "keep scanning", not "hide the fact that a source was unreachable").
         var groupFailed = new ConcurrentDictionary<string, IReadOnlyList<SourceFailureInfo>>(StringComparer.OrdinalIgnoreCase);
+        // Every published version per group (listed or not, like the planner's candidates): the
+        // shared-version check needs them even for an id with nothing newer to offer. A group with
+        // a failed source has no entry: the missing version may sit on that source.
+        var published = new ConcurrentDictionary<string, IReadOnlyCollection<NuGetVersion>>(StringComparer.OrdinalIgnoreCase);
         IReadOnlyList<SourceFailure> sourceFailures = Array.Empty<SourceFailure>();
         if (o.CheckUpdates)
         {
@@ -124,6 +128,7 @@ public sealed class Handlers
                 else list = Array.Empty<Candidate>();
                 var key = g.Key.Dir + "|" + g.Key.Sources + "|" + g.Key.Id;
                 candidates[key] = list;
+                if (versions.Failed.Count == 0) published[key] = new HashSet<NuGetVersion>(versions.Versions);
                 if (versions.Failed.Count > 0) groupFailed[key] = versions.Failed;
                 progress.Report($"Checked {Interlocked.Increment(ref done)} package(s)");
             });
@@ -131,19 +136,26 @@ public sealed class Handlers
         }
 
         var now = DateTimeOffset.UtcNow;
+        var shared = new SharedVersions(fresh);
         var projects = work
             .GroupBy(w => w.P.Path)
             .Select(pg => new ProjectRows(pg.Key, pg.First().P.Name, pg
                 .GroupBy(w => w.T.Framework)
                 .Select(tg => new FrameworkRows(tg.Key, tg.Select(w =>
                 {
-                    var key = Path.GetDirectoryName(w.P.Path) + "|" + string.Join(";", w.T.RestoreSources) + "|" + w.A.Id.ToLowerInvariant();
+                    var key = GroupKey(w.P.Path, w.T, w.A.Id);
                     candidates.TryGetValue(key, out var c);
                     var row = RowBuilder.Row(w.A, w.Requested, o.CheckUpdates ? c : null, NuGetFramework.Parse(w.T.Framework), o, now);
                     // Don't overwrite an existing Reason (bad range text, not resolved): only a row
                     // that would otherwise vanish (no Target, no Reason) gets the source failure.
                     if (row.Target == null && row.Reason == null && groupFailed.TryGetValue(key, out var gf) && gf.Count > 0)
                         row = row with { Reason = SourceFailureReason(gf[0]) };
+                    if (row.Target != null && !row.RestoreOnly)
+                        row = row with
+                        {
+                            Blocked = shared.Blocker(w.T, w.A.Id, NuGetVersion.Parse(row.Target),
+                                (path, t, id) => published.TryGetValue(GroupKey(path, t, id), out var v) ? v : null),
+                        };
                     return row;
                 })
                 .Where(r => o.IncludeUpToDate || !o.CheckUpdates || r.Target != null || r.Capped != null || r.Reason != null)
@@ -228,6 +240,10 @@ public sealed class Handlers
         return EditPlanner.Plan(p.Rows, all, id => candidates.TryGetValue(id, out var c) ? c : Array.Empty<Candidate>(),
             o, RepoRoot(p.SolutionDir), id => idFailures.TryGetValue(id, out var f) ? SourceFailureReason(f) : null, outside);
     }
+
+    /// The feed group a (project, tfm, id) belongs to: same folder (NuGet.config), same sources, same id.
+    private static string GroupKey(string projectPath, EvaluatedTfm t, string id) =>
+        Path.GetDirectoryName(projectPath) + "|" + string.Join(";", t.RestoreSources) + "|" + id.ToLowerInvariant();
 
     /// One entry per project file: `A/../A/A.csproj` and `A/A.csproj` evaluate to the same Path, and
     /// EditPlanner's `ToDictionary(p => p.Path, OrdinalIgnoreCase)` would throw on the duplicate key.
