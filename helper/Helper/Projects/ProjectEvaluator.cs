@@ -202,8 +202,7 @@ public sealed class ProjectEvaluator
                     NullIfEmpty(item.GetMetadataValue("VersionOverride")),
                     vSite,
                     oSite,
-                    oProblem ?? vProblem,
-                    string.Equals(item.GetMetadataValue("PrivateAssets").Trim(), "all", StringComparison.OrdinalIgnoreCase)));
+                    oProblem ?? vProblem));
             }
         }
 

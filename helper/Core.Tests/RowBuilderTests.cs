@@ -10,7 +10,7 @@ namespace NuGetExtended.Core.Tests;
 public class RowBuilderTests
 {
     private static PackageItem I(string type, string id, string? version, string? over = null) =>
-        new(id, type, version, over, null, null, null, false);
+        new(id, type, version, over, null, null, null);
 
     [Fact]
     public void RequestedPrefersOverrideThenCentralThenReference()
@@ -30,7 +30,7 @@ public class RowBuilderTests
     [Fact]
     public void RowCarriesTargetCappedAndSeverity()
     {
-        var asset = new RowBuilder.Asset("Polly", NuGetVersion.Parse("7.0.0"), true, 0, false, false);
+        var asset = new RowBuilder.Asset("Polly", NuGetVersion.Parse("7.0.0"), true, 0, false);
         var now = DateTimeOffset.UtcNow;
         var cands = new[] { "7.0.0", "7.2.4", "8.8.0" }
             .Select(v => new Candidate(NuGetVersion.Parse(v), true, now.AddDays(-30), Array.Empty<NuGetFramework>())).ToList();
@@ -46,7 +46,7 @@ public class RowBuilderTests
     [Fact]
     public void BadRangeTextIsAReason()
     {
-        var asset = new RowBuilder.Asset("X", NuGetVersion.Parse("1.0.0"), true, 0, false, false);
+        var asset = new RowBuilder.Asset("X", NuGetVersion.Parse("1.0.0"), true, 0, false);
         var row = RowBuilder.Row(asset, "[oops", new List<Candidate>(), NuGetFramework.Parse("net8.0"), new ScanOptions(), DateTimeOffset.UtcNow);
         Assert.Null(row.Target);
         Assert.Equal("version text '[oops' is not a NuGet version or range", row.Reason);

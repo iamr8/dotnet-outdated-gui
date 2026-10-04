@@ -68,7 +68,7 @@ public sealed class Handlers
                 if (a.AutoReferenced && !o.IncludeAutoReferences) continue;
                 if (!a.Direct && (!o.Transitive || a.Depth > o.TransitiveDepth)) continue;
                 var requested = a.Direct ? RowBuilder.Requested(tfm, a.Id) ?? a.RequestedRange ?? "" : a.RequestedRange ?? "";
-                work.Add((e, tfm, new RowBuilder.Asset(a.Id, a.Resolved, a.Direct, a.Depth, a.AutoReferenced, a.PrivateAssetsAll), requested));
+                work.Add((e, tfm, new RowBuilder.Asset(a.Id, a.Resolved, a.Direct, a.Depth, a.AutoReferenced), requested));
             }
         }
 

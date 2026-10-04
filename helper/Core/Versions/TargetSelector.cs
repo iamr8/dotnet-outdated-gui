@@ -14,7 +14,6 @@ public static class TargetSelector
         NuGetVersion resolved,
         IReadOnlyList<Candidate> candidates,
         NuGetFramework framework,
-        bool developmentDependency,
         ScanOptions options,
         DateTimeOffset now)
     {
@@ -25,7 +24,7 @@ public static class TargetSelector
             _ => resolved.IsPrerelease,
         };
         var label = options.PreReleaseLabel.Trim();
-        var versions = Filter(candidates, framework, developmentDependency, options, now)
+        var versions = Filter(candidates, framework, options, now)
             .Where(v => !v.IsPrerelease || (includePre && HasLabel(v, label)))
             .ToList();
         var behavior = Behavior(options.VersionLock, includePre);
@@ -126,21 +125,21 @@ public static class TargetSelector
     }
 
     private static IEnumerable<NuGetVersion> Filter(IReadOnlyList<Candidate> candidates, NuGetFramework framework,
-        bool developmentDependency, ScanOptions options, DateTimeOffset now)
+        ScanOptions options, DateTimeOffset now)
     {
         foreach (var c in candidates)
         {
             if (!c.Listed) continue;
             if (options.OlderThanDays > 0 && c.Published is { } p && p > now.AddDays(-options.OlderThanDays)) continue;
-            if (!SupportsFramework(framework, c.DependencyFrameworks, developmentDependency)) continue;
+            if (!SupportsFramework(framework, c.DependencyFrameworks)) continue;
             yield return c.Version;
         }
     }
 
     /// Whether a candidate whose dependency groups target [dependencyFrameworks] can be used by a
-    /// project targeting [framework]. No dependency groups (or a development dependency) means the
-    /// package does not restrict frameworks the way its dependency groups would.
-    public static bool SupportsFramework(NuGetFramework framework, IReadOnlyList<NuGetFramework> dependencyFrameworks, bool developmentDependency = false) =>
-        developmentDependency || dependencyFrameworks.Count == 0 ||
+    /// project targeting [framework]. No dependency groups means the package declares no frameworks,
+    /// so it does not restrict them.
+    public static bool SupportsFramework(NuGetFramework framework, IReadOnlyList<NuGetFramework> dependencyFrameworks) =>
+        dependencyFrameworks.Count == 0 ||
         new FrameworkReducer().GetNearest(framework, dependencyFrameworks) != null;
 }

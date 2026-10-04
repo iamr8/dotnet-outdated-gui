@@ -14,7 +14,7 @@ public class TargetSelectorTests
         versions.Select(v => new Candidate(NuGetVersion.Parse(v), true, Now.AddDays(-400), Array.Empty<NuGetFramework>())).ToList();
 
     private static Selection Pick(string requested, string resolved, List<Candidate> c, ScanOptions? o = null) =>
-        TargetSelector.Select(VersionRange.Parse(requested), NuGetVersion.Parse(resolved), c, Net8, false, o ?? new ScanOptions(), Now);
+        TargetSelector.Select(VersionRange.Parse(requested), NuGetVersion.Parse(resolved), c, Net8, o ?? new ScanOptions(), Now);
 
     [Fact]
     public void MinimumVersionTakesLatestStable()

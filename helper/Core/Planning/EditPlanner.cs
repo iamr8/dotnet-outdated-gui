@@ -248,8 +248,7 @@ public static class EditPlanner
         // planner) has nothing for NuGetFramework.Parse to work with: skip the TFM check for it.
         if (string.IsNullOrEmpty(c.Tfm.Framework)) return true;
 
-        var developmentDependency = c.Tfm.Items.Any(i => string.Equals(i.Id, c.Id, StringComparison.OrdinalIgnoreCase) && i.PrivateAssetsAll);
-        return TargetSelector.SupportsFramework(NuGetFramework.Parse(c.Tfm.Framework), candidate.DependencyFrameworks, developmentDependency);
+        return TargetSelector.SupportsFramework(NuGetFramework.Parse(c.Tfm.Framework), candidate.DependencyFrameworks);
     }
 
     private static IEnumerable<Edit> Inserts(EvaluatedProject p, EvaluatedTfm t, UpgradeRow row, List<Skip> skipped, Repo repo)

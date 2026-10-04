@@ -18,8 +18,8 @@ public class EditPlannerTests
     private static ValueSite Prop(string file, int line, string name, string raw) =>
         new("property", file, line, 5, name, "property", raw, null, null, null, null, null);
 
-    private static PackageItem Ref(string id, string? version, ValueSite? site) => new(id, "PackageReference", version, null, site, null, null, false);
-    private static PackageItem Central(string id, string version, ValueSite site) => new(id, "PackageVersion", version, null, site, null, null, false);
+    private static PackageItem Ref(string id, string? version, ValueSite? site) => new(id, "PackageReference", version, null, site, null, null);
+    private static PackageItem Central(string id, string version, ValueSite site) => new(id, "PackageVersion", version, null, site, null, null);
 
     private static EvaluatedProject Proj(string name, bool cpm, params PackageItem[] items) =>
         new($"{Root}/{name}/{name}.csproj", name, new[] { new EvaluatedTfm("net8.0", "", cpm, false, $"{Root}/Directory.Packages.props", items, Array.Empty<string>()) },
@@ -153,7 +153,7 @@ public class EditPlannerTests
     {
         var central = Meta($"{Root}/Directory.Packages.props", 3, "7.0.0", "PackageVersion");
         var overrideSite = Meta($"{Root}/A/A.csproj", 5, "7.0.0", "PackageReference", "Polly", "VersionOverride");
-        var reference = new PackageItem("Polly", "PackageReference", null, "7.0.0", central, overrideSite, null, false);
+        var reference = new PackageItem("Polly", "PackageReference", null, "7.0.0", central, overrideSite, null);
         var a = Proj("A", true, reference);
 
         var plan = Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Polly", "7.2.4") }, a);
@@ -257,7 +257,7 @@ public class EditPlannerTests
         // The central PackageVersion item exists (so a duplicate insert must never happen) but has
         // no editable site of its own - e.g. its Version chains to another property.
         var central = new PackageItem("Leaf", "PackageVersion", "2.0.0", null, null, null,
-            "property 'XVer' points to another property", false);
+            "property 'XVer' points to another property");
         var a = Proj("A", true, central);
 
         var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a },
@@ -452,7 +452,7 @@ public class EditPlannerTests
         // "attribute"/"child"/"property", and none of the A9 checks (rewrite, repo root,
         // read-only, TFM) should treat it any differently from an ordinary metadata site.
         var site = new ValueSite("directive", $"{Root}/app.cs", 2, 1, "Humanizer.Core", "directive", "2.14.1", null, null, null, null, null);
-        var item = new PackageItem("Humanizer.Core", "PackageReference", "2.14.1", null, site, null, null, false);
+        var item = new PackageItem("Humanizer.Core", "PackageReference", "2.14.1", null, site, null, null);
         var a = new EvaluatedProject($"{Root}/app.cs", "app",
             new[] { new EvaluatedTfm("net10.0", "", false, false, null, new[] { item }, Array.Empty<string>()) },
             new[] { $"{Root}/app.cs" }, null);
@@ -474,7 +474,7 @@ public class EditPlannerTests
     {
         // `#:package Serilog` with no `@version`: FileBasedApps.Evaluate records this as a
         // PackageItem with no VersionSite and a SiteProblem - there is nowhere to write the edit.
-        var item = new PackageItem("Serilog", "PackageReference", null, null, null, null, "the directive has no version", false);
+        var item = new PackageItem("Serilog", "PackageReference", null, null, null, null, "the directive has no version");
         var a = new EvaluatedProject($"{Root}/app.cs", "app",
             new[] { new EvaluatedTfm("net10.0", "", false, false, null, new[] { item }, Array.Empty<string>()) },
             new[] { $"{Root}/app.cs" }, null);

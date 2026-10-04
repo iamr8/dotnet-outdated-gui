@@ -120,6 +120,29 @@ public class ScanTests
         Assert.Equal(JsonValueKind.Null, Row(r, "Lib.X").GetProperty("blocked").ValueKind);
     }
 
+    // Break: skip the framework check for a PrivateAssets="all" package (the old development-dependency bypass).
+    [Fact]
+    public void PrivatePackageWhoseNewVersionDropsTheFrameworkIsNotOffered()
+    {
+        var dir = FixtureSolution.NewDir();
+        // 2.0.0 has dependency groups for net9.0 only: a project on FixtureSolution.Tfm cannot use it.
+        var feed = FixtureFeed.Create(dir,
+            new FixtureFeed.Package("Build.Tool", "1.0.0", Array.Empty<string>()),
+            new FixtureFeed.Package("Build.Tool", "2.0.0", new[] { "net9.0" }));
+        FixtureSolution.WriteNuGetConfig(dir, ("local", feed));
+        FixtureSolution.Write(dir, "P/P.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFramework>{FixtureSolution.Tfm}</TargetFramework></PropertyGroup>
+  <ItemGroup><PackageReference Include=""Build.Tool"" Version=""1.0.0"" PrivateAssets=""all"" /></ItemGroup>
+</Project>");
+        var project = Path.Combine(dir, "P/P.csproj");
+        FixtureSolution.Restore(project);
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project }, new { includeUpToDate = true });
+
+        Assert.Equal(JsonValueKind.Null, Row(r, "Build.Tool").GetProperty("target").ValueKind);
+    }
+
     [Fact]
     public void OfflineListingHasNoTargets()
     {

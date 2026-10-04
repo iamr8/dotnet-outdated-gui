@@ -15,7 +15,7 @@ public sealed record ValueSite(
 
 public sealed record PackageItem(
     string Id, string ItemType, string? Version, string? VersionOverride,
-    ValueSite? VersionSite, ValueSite? OverrideSite, string? SiteProblem, bool PrivateAssetsAll);
+    ValueSite? VersionSite, ValueSite? OverrideSite, string? SiteProblem);
 
 public sealed record EvaluatedTfm(
     string Framework, string AssetsFile, bool CpmEnabled, bool TransitivePinning,
