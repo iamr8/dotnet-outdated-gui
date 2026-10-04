@@ -212,6 +212,38 @@ public class EditPlannerTests
         Assert.Contains(plan.Edits, e => e.Op == "insert" && e.ItemType == "PackageReference" && e.File == a.Path);
     }
 
+    // Break: Plan inserts a transitive reference without checking the target against every TFM of the project.
+    [Fact]
+    public void TransitiveInsertIsSkippedWhenTheTargetDropsAFrameworkOfTheProject()
+    {
+        // A targets net8.0 and net6.0. Leaf 2.1.0 only declares net8.0, and the inserted reference
+        // would apply to both frameworks, so the net6.0 build would break.
+        var tfms = new[] { "net8.0", "net6.0" }.Select(f =>
+            new EvaluatedTfm(f, "", true, false, $"{Root}/Directory.Packages.props", Array.Empty<PackageItem>(), Array.Empty<string>())).ToArray();
+        var a = new EvaluatedProject($"{Root}/A/A.csproj", "A", tfms, new[] { $"{Root}/A/A.csproj" }, null);
+
+        var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a },
+            _ => new[] { Cand("2.1.0", "net8.0") }, new ScanOptions(Transitive: true), Root);
+
+        Assert.Empty(plan.Edits);
+        Assert.Empty(plan.RestoreProjects);
+        Assert.Equal("the new version does not support every target framework of this project", Assert.Single(plan.Skipped).Reason);
+    }
+
+    [Fact]
+    public void TransitiveInsertIsKeptWhenTheTargetSupportsEveryFrameworkOfTheProject()
+    {
+        var tfms = new[] { "net8.0", "net6.0" }.Select(f =>
+            new EvaluatedTfm(f, "", false, false, null, Array.Empty<PackageItem>(), Array.Empty<string>())).ToArray();
+        var a = new EvaluatedProject($"{Root}/A/A.csproj", "A", tfms, new[] { $"{Root}/A/A.csproj" }, null);
+
+        var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a },
+            _ => new[] { Cand("2.1.0", "net6.0", "net8.0") }, new ScanOptions(Transitive: true), Root);
+
+        Assert.Equal("insert", Assert.Single(plan.Edits).Op);
+        Assert.Empty(plan.Skipped);
+    }
+
     [Fact]
     public void TransitiveOptionOffIsSkipped()
     {
@@ -283,6 +315,17 @@ public class EditPlannerTests
         var need = EditPlanner.IdsNeedingCandidates(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a });
 
         Assert.True(need.ContainsKey("Leaf"));
+        Assert.Equal(a.Path, need["Leaf"].ProjectPath);
+    }
+
+    // Break: IdsNeedingCandidates skips a transitive row, so the handler fetches nothing for the insert's framework check.
+    [Fact]
+    public void IdsNeedingCandidatesIncludesATransitiveRowsOwnId()
+    {
+        var a = Proj("A", false);
+
+        var need = EditPlanner.IdsNeedingCandidates(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a });
+
         Assert.Equal(a.Path, need["Leaf"].ProjectPath);
     }
 

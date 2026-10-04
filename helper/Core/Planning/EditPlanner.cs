@@ -54,6 +54,14 @@ public static class EditPlanner
                 // No PackageReference/GlobalPackageReference anywhere in this TFM, and (under CPM)
                 // no existing central item either: a genuinely new dependency, handled by Inserts.
                 if (!options.Transitive) { skipped.Add(new Skip(row.Project, row.Id, "transitive package - enable transitive upgrades")); continue; }
+                // The inserted reference applies to every TFM of the project, not only the row's.
+                var wanted = NuGetVersion.Parse(row.Target);
+                var known = candidates(row.Id).FirstOrDefault(x => x.Version == wanted);
+                if (known != null && !project.Frameworks.All(t => SupportsTfm(t, known)))
+                {
+                    skipped.Add(new Skip(row.Project, row.Id, "the new version does not support every target framework of this project"));
+                    continue;
+                }
                 var inserts = Inserts(project, tfm, row, skipped, repo).ToList();
                 if (inserts.Count > 0) { edits.AddRange(inserts); restore.Add(project.Path); }
                 continue;
@@ -174,7 +182,13 @@ public static class EditPlanner
             if (tfm == null) continue;
 
             var (site, _, transitive, _) = ResolveRowSite(tfm, row.Id);
-            if (transitive || site == null) continue;
+            if (transitive)
+            {
+                // A new reference has no site, but Plan checks its target against the project's frameworks.
+                result.TryAdd(row.Id, (project.Path, tfm));
+                continue;
+            }
+            if (site == null) continue;
             Add(SiteResolver.Key(site));
             // The row's own (project, tfm, id) needs candidates too, even when BuildSiteMap would
             // not see it as a consumer of this site (a project with no PackageReference of its own,
@@ -244,12 +258,13 @@ public static class EditPlanner
         // shared by more than one id) is not.
         var candidate = candidates(c.Id).FirstOrDefault(x => x.Version == target);
         if (candidate == null) return !needsKnownVersionCheck;
+        return SupportsTfm(c.Tfm, candidate);
+    }
+
+    private static bool SupportsTfm(EvaluatedTfm t, Candidate candidate) =>
         // An empty TFM string (should not occur in real evaluated data, but must never crash the
         // planner) has nothing for NuGetFramework.Parse to work with: skip the TFM check for it.
-        if (string.IsNullOrEmpty(c.Tfm.Framework)) return true;
-
-        return TargetSelector.SupportsFramework(NuGetFramework.Parse(c.Tfm.Framework), candidate.DependencyFrameworks);
-    }
+        string.IsNullOrEmpty(t.Framework) || TargetSelector.SupportsFramework(NuGetFramework.Parse(t.Framework), candidate.DependencyFrameworks);
 
     private static IEnumerable<Edit> Inserts(EvaluatedProject p, EvaluatedTfm t, UpgradeRow row, List<Skip> skipped, Repo repo)
     {
