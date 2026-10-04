@@ -11,12 +11,26 @@ public sealed record AssetsData(IReadOnlyList<AssetPackage> Packages, IReadOnlyD
 
 public static class AssetsReader
 {
-    public static AssetsData? Read(string assetsFile, string tfmAlias, string runtime)
+    internal static LockFile? Load(string assetsFile)
     {
         if (string.IsNullOrEmpty(assetsFile) || !File.Exists(assetsFile)) return null;
         var lockFile = LockFileUtilities.GetLockFile(assetsFile, NullLogger.Instance);
-        if (lockFile?.PackageSpec == null) return null;
+        return lockFile?.PackageSpec == null ? null : lockFile;
+    }
 
+    public static IReadOnlyDictionary<string, AssetsData?> ReadAll(string assetsFile, IEnumerable<string> tfmAliases, string runtime)
+    {
+        var lockFile = Load(assetsFile);
+        return tfmAliases.Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(a => a, a => lockFile == null ? null : Read(lockFile, a, runtime), StringComparer.OrdinalIgnoreCase);
+    }
+
+    public static AssetsData? Read(string assetsFile, string tfmAlias, string runtime) =>
+        Load(assetsFile) is { } lockFile ? Read(lockFile, tfmAlias, runtime) : null;
+
+    /// One target framework's view of an already parsed assets file ([Load] makes it with a non-null PackageSpec).
+    internal static AssetsData? Read(LockFile lockFile, string tfmAlias, string runtime)
+    {
         var tfi = lockFile.PackageSpec.TargetFrameworks.FirstOrDefault(t => string.Equals(t.TargetAlias, tfmAlias, StringComparison.OrdinalIgnoreCase))
                   ?? lockFile.PackageSpec.TargetFrameworks.FirstOrDefault(t => string.Equals(t.FrameworkName.GetShortFolderName(), tfmAlias, StringComparison.OrdinalIgnoreCase))
                   // Only a project with no TFM alias takes the single entry as is: with an alias, a

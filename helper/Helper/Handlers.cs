@@ -39,10 +39,15 @@ public sealed class Handlers
         // One event per project: the plugin's idle timeout restarts on each one.
         var evaluated = _evaluator.EvaluateAll(scanPaths, o.Runtime, ct, n => progress.Report($"Evaluated {n} of {scanPaths.Count} project(s)"));
 
-        // Each assets file is parsed once per scan: the stale check and the rows share it.
-        var assets = new ConcurrentDictionary<string, AssetsData?>(StringComparer.OrdinalIgnoreCase);
+        // Each assets file is parsed once per scan, for all its target frameworks.
+        // The stale check and the rows share the result.
+        // Only the per-framework views stay in memory, not the parsed file.
+        var aliases = evaluated.Where(e => e.Error == null).SelectMany(e => e.Frameworks)
+            .GroupBy(t => t.AssetsFile, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Select(t => t.Framework).ToList(), StringComparer.OrdinalIgnoreCase);
+        var assets = new ConcurrentDictionary<string, IReadOnlyDictionary<string, AssetsData?>>(StringComparer.OrdinalIgnoreCase);
         AssetsData? Read(EvaluatedTfm t) =>
-            assets.GetOrAdd(t.AssetsFile + "|" + t.Framework, _ => AssetsReader.Read(t.AssetsFile, t.Framework, o.Runtime));
+            assets.GetOrAdd(t.AssetsFile, f => AssetsReader.ReadAll(f, aliases[f], o.Runtime))[t.Framework];
 
         var failures = new List<Failure>();
         var stale = new List<string>();
