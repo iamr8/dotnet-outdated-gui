@@ -133,7 +133,7 @@ jobs:
       - name: Helper tests
         env:
           HELPER_TEST_TFM: ${{ matrix.tfm }}
-        run: dotnet test helper/Helper.Tests -v q --logger "console;verbosity=detailed"
+        run: dotnet test helper/Helper.Tests -v q
 
   # One stable check name for branch protection: matrix job names change with the matrix.
   helper-tests-result:
