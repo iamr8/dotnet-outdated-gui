@@ -30,8 +30,9 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(tr -d '[:space:]' < VERSION)"
-          echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$' \
-            || { echo "::error::Invalid version '$VERSION' in VERSION file"; exit 1; }
+          # Stable x.y.z only: `sort -V` puts 0.2.0-rc.1 above 0.2.0, which breaks the check below.
+          echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
+            || { echo "::error::Invalid version '$VERSION' in VERSION file (use stable x.y.z)"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
           LATEST="$(git tag -l 'v*' | sed 's/^v//' | sort -V | tail -n1 || true)"
