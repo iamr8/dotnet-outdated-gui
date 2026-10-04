@@ -20,6 +20,8 @@ class DepRow(
     val restoreOnly: Boolean = false,
     /** Tooltip: why a row is not checkable, or what the upgrade does. */
     val note: String? = null,
+    /** Set when a newer version exists but a package sharing this version lacks it: not checkable. */
+    val blocked: String? = null,
 )
 
 /** A project + target framework group of packages, e.g. "Sahelanthropus.Data · net10.0". */
@@ -57,7 +59,7 @@ object OutdatedRows {
         return exclude.none { lower.contains(it.lowercase()) }
     }
 
-    /** Only rows with a target are checkable. A newer version outside the range shows gray only when [showCapped]. */
+    /** Only rows with a target that nothing blocks are checkable. A newer version outside the range shows gray only when [showCapped]. */
     fun toDep(raw: PackageRow, showCapped: Boolean = false): DepRow {
         // Child-element and property values keep the file's spacing and line breaks; trim for display.
         val row = raw.copy(requested = raw.requested.trim())
@@ -65,6 +67,10 @@ object OutdatedRows {
         val target = row.target?.takeIf { it.isNotBlank() }
         val capped = row.capped?.takeIf { it.isNotBlank() }
         return when {
+            target != null && row.blocked != null -> DepRow(
+                row.id, current, target, SeverityColor.NONE, outdated = false,
+                requested = row.requested, note = row.blocked, blocked = row.blocked,
+            )
             target != null -> DepRow(
                 row.id, current, target, severityColor(UpgradeSeverity.from(row.severity), target), outdated = true,
                 requested = row.requested,

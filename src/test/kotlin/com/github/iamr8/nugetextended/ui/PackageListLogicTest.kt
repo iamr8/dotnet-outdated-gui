@@ -1,5 +1,6 @@
 package com.github.iamr8.nugetextended.ui
 
+import com.github.iamr8.nugetextended.engine.PackageRow
 import com.github.iamr8.nugetextended.model.SeverityColor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -190,5 +191,18 @@ class PackageListLogicTest {
     fun searchTextIsEmptyForNull() {
         // ListSpeedSearch may hand the accessor a null element (e.g. an empty model); must not throw.
         assertEquals("", PackageListLogic.searchText(null))
+    }
+
+    // Break: a blocked row counts as checkable, so the section toggle or Select All checks it.
+    @Test
+    fun blockedRowIsSkippedBySectionToggleAndSelectAll() {
+        val blocked = OutdatedRows.toDep(PackageRow("Lib.X", "5.0.1", "5.0.1", "5.0.2", "Patch", blocked = "Lib.Y has no version 5.0.2."))
+        val entries = PackageListLogic.buildEntries(listOf(section("A", "net8.0", "/a.csproj", listOf(blocked, dep("Polly")))))
+
+        PackageListLogic.outdatedEntries(entries).forEach { it.checked = true }
+
+        assertEquals(listOf("Polly"), PackageListLogic.checkedRows(entries).map { it.id })
+        assertEquals(CheckState.ALL, PackageListLogic.sectionCheckState(entries.filterIsInstance<HeaderEntry>().single()))
+        assertTrue(PackageListLogic.allOutdatedChecked(entries))
     }
 }

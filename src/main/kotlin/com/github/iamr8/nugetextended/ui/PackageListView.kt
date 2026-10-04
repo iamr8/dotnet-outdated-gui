@@ -1,10 +1,16 @@
 package com.github.iamr8.nugetextended.ui
 
 import com.github.iamr8.nugetextended.model.SeverityColor
+import com.intellij.icons.AllIcons
+import com.intellij.openapi.ui.popup.Balloon
+import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.ui.JBColor
 import com.intellij.ui.ListSpeedSearch
 import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.SimpleTextAttributes
+import com.intellij.ui.awt.RelativePoint
+import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import com.intellij.ui.speedSearch.SpeedSearchUtil
 import com.intellij.util.ui.JBUI
@@ -12,12 +18,16 @@ import com.intellij.util.ui.ThreeStateCheckBox
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Component
+import java.awt.Container
+import java.awt.Point
+import java.awt.Rectangle
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.BoxLayout
 import javax.swing.DefaultListModel
 import javax.swing.JCheckBox
 import javax.swing.JComponent
+import javax.swing.JLabel
 import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.KeyStroke
@@ -124,9 +134,10 @@ internal object PackageListLogic {
 class PackageListView(private val onSelectionChanged: () -> Unit) {
 
     private val model = DefaultListModel<ListEntry>()
+    private val renderer = EntryRenderer()
     private val list = JBList(model).apply {
         selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
-        cellRenderer = EntryRenderer()
+        cellRenderer = renderer
         addListSelectionListener { dropHeaderSelections() }
     }
 
@@ -137,7 +148,9 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
                 val index = list.locationToIndex(e.point)
                 if (index < 0) return
                 when (val entry = model.getElementAt(index)) {
-                    is PackageEntry -> if (entry.dep.outdated && e.x <= CHECKBOX_HIT_WIDTH) {
+                    is PackageEntry -> if (entry.dep.blocked != null && renderer.hitsInfo(list, index, e.point)) {
+                        showBlocked(entry.dep.blocked, e)
+                    } else if (entry.dep.outdated && e.x <= CHECKBOX_HIT_WIDTH) {
                         entry.checked = !entry.checked
                         list.repaint()
                         onSelectionChanged()
@@ -208,6 +221,17 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
         onSelectionChanged()
     }
 
+    /** The shared-version message in a balloon under the click. */
+    private fun showBlocked(message: String, e: MouseEvent) {
+        val html = HtmlChunk.text(message).wrapWith(HtmlChunk.body().style("width: 320px")).wrapWith(HtmlChunk.html()).toString()
+        val content = JBLabel(html, AllIcons.General.Information, JLabel.LEFT).apply { border = JBUI.Borders.empty(4) }
+        JBPopupFactory.getInstance().createBalloonBuilder(content)
+            .setHideOnClickOutside(true)
+            .setHideOnKeyOutside(true)
+            .createBalloon()
+            .show(RelativePoint(e), Balloon.Position.below)
+    }
+
     private fun entries(): List<ListEntry> = (0 until model.size()).map { model.getElementAt(it) }
 
     /** Headers aren't actionable; keep them out of the selection. */
@@ -236,10 +260,13 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
         }
         private val left = SimpleColoredComponent().apply { isOpaque = false }
         private val right = SimpleColoredComponent().apply { isOpaque = false }
+        /** Shown on a blocked row; a click on it opens the reason (see [hitsInfo]). */
+        private val info = JLabel(AllIcons.General.Information).apply { border = JBUI.Borders.emptyLeft(6) }
 
         init {
             westPanel.add(checkBox)
             westPanel.add(left)
+            westPanel.add(info)
             headerWest.add(headerCheck)
             headerWest.add(header)
             headerPanel.add(headerWest, BorderLayout.WEST)
@@ -284,7 +311,10 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
 
                 left.clear()
                 right.clear()
-                val nameAttr = if (selected) {
+                info.isVisible = entry.dep.blocked != null
+                val nameAttr = if (entry.dep.blocked != null) {
+                    SimpleTextAttributes.ERROR_ATTRIBUTES
+                } else if (selected) {
                     SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, list.selectionForeground)
                 } else {
                     SimpleTextAttributes.REGULAR_ATTRIBUTES
@@ -309,6 +339,39 @@ class PackageListView(private val onSelectionChanged: () -> Unit) {
                 }
                 rowPanel
             }
+        }
+
+        /**
+         * True when [point] (list coordinates) falls on the info icon of row [index]. The renderer
+         * is a rubber stamp with no real bounds, so this lays it out for that cell first.
+         */
+        fun hitsInfo(list: JList<out ListEntry>, index: Int, point: Point): Boolean {
+            val cell = list.getCellBounds(index, index) ?: return false
+            val stamp = getListCellRendererComponent(list, list.model.getElementAt(index), index, false, false)
+            if (!info.isVisible) return false
+            stamp.setBounds(0, 0, cell.width, cell.height)
+            invalidateDeep(stamp)
+            layoutDeep(stamp)
+            var x = info.x
+            var y = info.y
+            var parent = info.parent
+            while (parent != null && parent !== stamp) {
+                x += parent.x
+                y += parent.y
+                parent = parent.parent
+            }
+            return Rectangle(x, y, info.width, info.height).contains(point.x - cell.x, point.y - cell.y)
+        }
+
+        private fun invalidateDeep(c: Component) {
+            c.invalidate()
+            if (c is Container) c.components.forEach { invalidateDeep(it) }
+        }
+
+        private fun layoutDeep(c: Component) {
+            if (c !is Container) return
+            c.doLayout()
+            c.components.forEach { layoutDeep(it) }
         }
     }
 

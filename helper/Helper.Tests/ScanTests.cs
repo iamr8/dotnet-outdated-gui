@@ -46,6 +46,80 @@ public class ScanTests
         Assert.Empty(r.GetProperty("stale").EnumerateArray());
     }
 
+    private static (string dir, string project) SharedPropertySetup(params string[] yVersions)
+    {
+        var dir = FixtureSolution.NewDir();
+        var feed = FixtureFeed.Create(dir, ("Lib.X", new[] { "5.0.1", "5.0.2" }), ("Lib.Y", yVersions));
+        FixtureSolution.WriteNuGetConfig(dir, ("local", feed));
+        FixtureSolution.Write(dir, "P/P.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFramework>{FixtureSolution.Tfm}</TargetFramework><LibVersion>5.0.1</LibVersion></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include=""Lib.X"" Version=""$(LibVersion)"" />
+    <PackageReference Include=""Lib.Y"" Version=""$(LibVersion)"" />
+  </ItemGroup>
+</Project>");
+        var project = Path.Combine(dir, "P/P.csproj");
+        FixtureSolution.Restore(project);
+        return (dir, project);
+    }
+
+    // Break: Scan does not run the shared-version check (no "blocked" on the row).
+    [Fact]
+    public void SharedPropertyBlocksTargetAnotherIdLacks()
+    {
+        var (dir, project) = SharedPropertySetup("5.0.1");
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project });
+
+        Assert.Equal("5.0.2", Row(r, "Lib.X").GetProperty("target").GetString());
+        Assert.Contains("Lib.Y", Row(r, "Lib.X").GetProperty("blocked").GetString());
+    }
+
+    // Break: Scan blocks every row on a shared property, published or not.
+    [Fact]
+    public void SharedPropertyDoesNotBlockWhenEveryIdHasTarget()
+    {
+        var (dir, project) = SharedPropertySetup("5.0.1", "5.0.2");
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project });
+
+        Assert.Equal("5.0.2", Row(r, "Lib.X").GetProperty("target").GetString());
+        Assert.Equal(JsonValueKind.Null, Row(r, "Lib.X").GetProperty("blocked").ValueKind);
+        Assert.Equal(JsonValueKind.Null, Row(r, "Lib.Y").GetProperty("blocked").ValueKind);
+    }
+
+    // Break: Scan treats a group with a failed source as a known version list (a false block).
+    [Fact]
+    public void SharedPropertyDoesNotBlockWhenASourceFailed()
+    {
+        using var listener = new HttpListener();
+        var port = FreePort();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
+        _ = Task.Run(async () =>
+        {
+            while (listener.IsListening)
+            {
+                HttpListenerContext ctx;
+                try { ctx = await listener.GetContextAsync(); } catch { break; }
+                ctx.Response.StatusCode = 401;
+                ctx.Response.Close();
+            }
+        });
+        var (dir, project) = SharedPropertySetup("5.0.1");
+        // Added after restore (see FailedSourceMarksRowInsteadOfHidingIt): the failed source may
+        // hold Lib.Y 5.0.2, so its version list is unknown, not "missing 5.0.2".
+        FixtureSolution.WriteNuGetConfig(dir, ("local", Path.Combine(dir, "feed")), ("private", $"http://127.0.0.1:{port}/v3/index.json"));
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project });
+
+        Assert.Equal("5.0.2", Row(r, "Lib.X").GetProperty("target").GetString());
+        Assert.Equal(JsonValueKind.Null, Row(r, "Lib.X").GetProperty("blocked").ValueKind);
+    }
+
     [Fact]
     public void OfflineListingHasNoTargets()
     {
