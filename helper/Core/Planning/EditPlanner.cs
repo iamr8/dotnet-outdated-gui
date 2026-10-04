@@ -19,10 +19,11 @@ public static class EditPlanner
     public static UpgradePlan Plan(
         IReadOnlyList<UpgradeRow> rows,
         IReadOnlyList<EvaluatedProject> all,
-        Func<string, IReadOnlyList<Candidate>> candidates,
+        // Candidate data of one consumer (project, tfm, id), read from that project's own feed context.
+        Func<string, EvaluatedTfm, string, IReadOnlyList<Candidate>> candidates,
         ScanOptions options,
         string repoRoot,
-        Func<string, string?>? failedReason = null,
+        Func<string, EvaluatedTfm, string, string?>? failedReason = null,
         IReadOnlyList<string>? outsideRoots = null)
     {
         // Folders that never count as the repository, even under repoRoot (the NuGet package
@@ -54,10 +55,12 @@ public static class EditPlanner
                 // No PackageReference/GlobalPackageReference anywhere in this TFM, and (under CPM)
                 // no existing central item either: a genuinely new dependency, handled by Inserts.
                 if (!options.Transitive) { skipped.Add(new Skip(row.Project, row.Id, "transitive package - enable transitive upgrades")); continue; }
-                // The inserted reference applies to every TFM of the project, not only the row's.
+                // The inserted reference applies to every TFM of the project, not only the row's. Without
+                // candidate data for a TFM there is nothing to check (same as Accepts).
                 var wanted = NuGetVersion.Parse(row.Target);
-                var known = candidates(row.Id).FirstOrDefault(x => x.Version == wanted);
-                if (known != null && !project.Frameworks.All(t => SupportsTfm(t, known)))
+                bool Supported(EvaluatedTfm t) =>
+                    candidates(project.Path, t, row.Id).FirstOrDefault(x => x.Version == wanted) is not { } known || SupportsTfm(t, known);
+                if (!project.Frameworks.All(Supported))
                 {
                     skipped.Add(new Skip(row.Project, row.Id, "the new version does not support every target framework of this project"));
                     continue;
@@ -132,7 +135,7 @@ public static class EditPlanner
                 // A source failure while fetching one of the site's consumer ids explains an empty
                 // candidate list better than the generic reason (same text Scan gives a row it could
                 // not check for the same cause).
-                var reason = users.Select(c => failedReason?.Invoke(c.Id)).FirstOrDefault(r => r != null)
+                var reason = users.Select(c => failedReason?.Invoke(c.Project, c.Tfm, c.Id)).FirstOrDefault(r => r != null)
                     ?? "no version fits every project that shares this version";
                 siteRows.ForEach(r => skipped.Add(new Skip(r.Project, r.Id, reason)));
                 continue;
@@ -157,22 +160,25 @@ public static class EditPlanner
         return new UpgradePlan(Dedupe(edits), restore.ToList(), also, skipped);
     }
 
-    /// Every distinct package id that shares an edit site with one of [rows] (including the row's
-    /// own id), paired with a consumer project/TFM the caller can build a FeedContext from. What a
-    /// caller must have Candidate data for before calling [Plan] - Accepts' known-version and
-    /// target-framework checks read it for every consumer of a touched site, not only the row's id.
+    /// Every (project, TFM, package id) that shares an edit site with one of [rows] (including the
+    /// row's own), once per feed context ([FeedKey]): the caller can build a FeedContext from each. What
+    /// a caller must have Candidate data for before calling [Plan] - Accepts' known-version and
+    /// target-framework checks read it for every consumer of a touched site, from that consumer's own
+    /// feeds, not only the row's. A transitive row adds its project's TFMs (the insert's framework check).
     /// A row whose project/TFM/site cannot be resolved contributes nothing (Plan skips it the same way).
-    public static IReadOnlyDictionary<string, (string ProjectPath, EvaluatedTfm Tfm)> IdsNeedingCandidates(
+    public static IReadOnlyList<(string ProjectPath, EvaluatedTfm Tfm, string Id)> IdsNeedingCandidates(
         IReadOnlyList<UpgradeRow> rows, IReadOnlyList<EvaluatedProject> all)
     {
         var byPath = all.ToDictionary(p => p.Path, StringComparer.OrdinalIgnoreCase);
         var (consumers, _) = BuildSiteMap(all);
-        var result = new Dictionary<string, (string, EvaluatedTfm)>(StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, (string, EvaluatedTfm, string)>(StringComparer.OrdinalIgnoreCase);
 
-        void Add(string key)
+        void Add(string projectPath, EvaluatedTfm t, string id) => result.TryAdd(FeedKey.Of(projectPath, t, id), (projectPath, t, id));
+
+        void AddSite(string key)
         {
             if (!consumers.TryGetValue(key, out var list)) return;
-            foreach (var c in list) result.TryAdd(c.Id, (c.Project, c.Tfm));
+            foreach (var c in list) Add(c.Project, c.Tfm, c.Id);
         }
 
         foreach (var row in rows)
@@ -185,18 +191,18 @@ public static class EditPlanner
             if (transitive)
             {
                 // A new reference has no site, but Plan checks its target against the project's frameworks.
-                result.TryAdd(row.Id, (project.Path, tfm));
+                foreach (var t in project.Frameworks) Add(project.Path, t, row.Id);
                 continue;
             }
             if (site == null) continue;
-            Add(SiteResolver.Key(site));
+            AddSite(SiteResolver.Key(site));
             // The row's own (project, tfm, id) needs candidates too, even when BuildSiteMap would
             // not see it as a consumer of this site (a project with no PackageReference of its own,
             // routed to an existing CPM central item): Plan counts it as a synthetic consumer there
             // (see the ViaExistingCentral branch), and its TFM/known-version check needs this data.
-            result.TryAdd(row.Id, (project.Path, tfm));
+            Add(project.Path, tfm, row.Id);
         }
-        return result;
+        return result.Values.ToList();
     }
 
     /// Resolves where row (tfm, id) really lives, folding [SiteResolver.Resolve] together with the
@@ -244,7 +250,7 @@ public static class EditPlanner
         return rewritten != null && VersionRange.TryParse(rewritten, out var range) && range.Satisfies(target);
     }
 
-    private static bool Accepts(Consumer c, ValueSite site, NuGetVersion target, bool needsKnownVersionCheck, Func<string, IReadOnlyList<Candidate>> candidates)
+    private static bool Accepts(Consumer c, ValueSite site, NuGetVersion target, bool needsKnownVersionCheck, Func<string, EvaluatedTfm, string, IReadOnlyList<Candidate>> candidates)
     {
         if (!SiteRewriteOk(site, target)) return false;
         if (c.Requested != null && VersionRange.TryParse(c.Requested, out var current) && current.HasUpperBound &&
@@ -256,7 +262,7 @@ public static class EditPlanner
         // consumer's TFM. When the caller provided no candidate data for this id, a site that does
         // not require the known-version check is still accepted; one that does (property, or a site
         // shared by more than one id) is not.
-        var candidate = candidates(c.Id).FirstOrDefault(x => x.Version == target);
+        var candidate = candidates(c.Project, c.Tfm, c.Id).FirstOrDefault(x => x.Version == target);
         if (candidate == null) return !needsKnownVersionCheck;
         return SupportsTfm(c.Tfm, candidate);
     }

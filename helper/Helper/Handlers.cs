@@ -194,9 +194,10 @@ public sealed class Handlers
         var allProjects = DistinctPaths(p.AllProjects);
         var all = _evaluator.EvaluateAll(allProjects, o.Runtime, ct, n => progress.Report($"Evaluated {n} of {allProjects.Count} project(s)"));
 
-        // Every id that shares an edit site with one of the rows (including sites shared by more
-        // than the row's own id or TFM): EditPlanner.Plan's known-version and TFM checks read
-        // Candidate data for every consumer of a touched site, not only the row's own id.
+        // Every (project, tfm, id) that shares an edit site with one of the rows (including sites shared
+        // by more than the row's own id or TFM): EditPlanner.Plan's known-version and TFM checks read
+        // Candidate data for every consumer of a touched site, from that consumer's own feed context
+        // (NuGet.config folder + restore sources), not only the row's. Keyed by GroupKey, like Scan.
         var need = EditPlanner.IdsNeedingCandidates(p.Rows, all);
         var candidates = new ConcurrentDictionary<string, IReadOnlyList<Candidate>>(StringComparer.OrdinalIgnoreCase);
         var idFailures = new ConcurrentDictionary<string, SourceFailureInfo>(StringComparer.OrdinalIgnoreCase);
@@ -207,11 +208,11 @@ public sealed class Handlers
 
             // Contexts are primed first, one at a time per (dir, sources) group, so a bad
             // NuGet.config fails fast and translates to UserException in one place - same as Scan.
-            foreach (var group in need.GroupBy(kv => (Dir: Path.GetDirectoryName(kv.Value.ProjectPath)!, Sources: FeedKey.Sources(kv.Value.Tfm))))
+            foreach (var group in need.GroupBy(n => (Dir: Path.GetDirectoryName(n.ProjectPath)!, Sources: FeedKey.Sources(n.Tfm))))
             {
                 try
                 {
-                    feeds.Context(group.Key.Dir, group.First().Value.Tfm.RestoreSources, group.First().Value.Tfm.AdditionalSources);
+                    feeds.Context(group.Key.Dir, group.First().Tfm.RestoreSources, group.First().Tfm.AdditionalSources);
                 }
                 catch (NuGetConfigurationException e)
                 {
@@ -219,9 +220,9 @@ public sealed class Handlers
                 }
             }
 
-            await Parallel.ForEachAsync(need, new ParallelOptions { MaxDegreeOfParallelism = 32, CancellationToken = ct }, async (kv, token) =>
+            await Parallel.ForEachAsync(need, new ParallelOptions { MaxDegreeOfParallelism = 32, CancellationToken = ct }, async (n, token) =>
             {
-                var (id, (projectPath, tfm)) = kv;
+                var (projectPath, tfm, id) = n;
                 var ctx = feeds.Context(Path.GetDirectoryName(projectPath)!, tfm.RestoreSources, tfm.AdditionalSources);
                 // GetCandidatesDetailedAsync's own Failed list is scoped to this one id and this one
                 // call - FeedService.Failures is process-wide, keyed only by source name, and would
@@ -229,8 +230,9 @@ public sealed class Handlers
                 // includePrerelease: true - the target itself was already chosen (and filtered) by
                 // the scan; this fetch only needs to know whether it exists and what it depends on.
                 var result = await feeds.GetCandidatesDetailedAsync(ctx, id, includePrerelease: true, token);
-                candidates[id] = result.Candidates;
-                if (result.Failed.Count > 0) idFailures[id] = result.Failed[0];
+                var key = GroupKey(projectPath, tfm, id);
+                candidates[key] = result.Candidates;
+                if (result.Failed.Count > 0) idFailures[key] = result.Failed[0];
             });
         }
 
@@ -241,8 +243,10 @@ public sealed class Handlers
         // under the repository root (ProjectEvaluator skips the same folders as inputs).
         var outside = all.SelectMany(e => e.Frameworks).Select(t => t.PackagesRoot).OfType<string>()
             .Append(SdkHost.DotnetRoot).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        return EditPlanner.Plan(p.Rows, all, id => candidates.TryGetValue(id, out var c) ? c : Array.Empty<Candidate>(),
-            o, RepoRoot(p.SolutionDir), id => idFailures.TryGetValue(id, out var f) ? SourceFailureReason(f) : null, outside);
+        return EditPlanner.Plan(p.Rows, all,
+            (path, t, id) => candidates.TryGetValue(GroupKey(path, t, id), out var c) ? c : Array.Empty<Candidate>(),
+            o, RepoRoot(p.SolutionDir),
+            (path, t, id) => idFailures.TryGetValue(GroupKey(path, t, id), out var f) ? SourceFailureReason(f) : null, outside);
     }
 
     /// The feed group a (project, tfm, id) belongs to: same folder (NuGet.config), same sources, same id.
