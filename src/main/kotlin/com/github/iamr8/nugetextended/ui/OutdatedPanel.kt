@@ -54,6 +54,7 @@ import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.datatransfer.StringSelection
 import java.io.File
+import java.io.IOException
 import javax.swing.BoxLayout
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -136,11 +137,18 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
     /**
      * Re-reads the solution so projects added or removed since the last scan are seen, and keeps the
      * user's scope (see [mergeScope]). Background thread only: it reads files and touches no UI.
-     * The toolbar is refreshed when the task ends.
+     * The toolbar is refreshed when the task ends. When the solution file cannot be read (permission,
+     * a sharing lock), the last known solution and scope stay, and the scan goes on with them.
      */
     private fun refreshSolution(): Solution? {
-        val before = solution?.projects?.map { it.name }.orEmpty()
-        val fresh = SolutionModel.discover(File(basePath()), project.name)
+        val known = solution
+        val before = known?.projects?.map { it.name }.orEmpty()
+        val fresh = try {
+            SolutionModel.discover(File(basePath()), project.name)
+        } catch (e: IOException) {
+            LOG.warn("${PluginText.NAME}: could not read the solution file, using the last known projects", e)
+            return known
+        }
         includedProjects = mergeScope(includedProjects, before, fresh?.projects?.map { it.name }.orEmpty())
         solution = fresh
         return fresh
