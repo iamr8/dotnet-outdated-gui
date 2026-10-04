@@ -5,15 +5,9 @@ import java.io.File
 /** Pure: which project files a scan covers. The engine takes a list of paths, so there is no per-tool split any more. */
 object ScanPlan {
 
-    private val projectExts = setOf("csproj", "fsproj", "vbproj")
-    private val skipDirs = setOf("bin", "obj", ".git", ".idea", "node_modules")
+    internal val projectExts = setOf("csproj", "fsproj", "vbproj")
+    internal val skipDirs = setOf("bin", "obj", ".git", ".idea", "node_modules")
     private const val DIRECTIVE_LINES = 64
-
-    /** True when every project in the open solution is included. */
-    fun allProjectsSelected(solution: Solution?, includedProjects: Set<String>): Boolean {
-        val sln = solution ?: return true
-        return sln.projects.isNotEmpty() && includedProjects.size == sln.projects.size
-    }
 
     fun projectPaths(
         solution: Solution?,
