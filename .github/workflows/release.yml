@@ -142,3 +142,21 @@ jobs:
           BODY="$(gh release view "v$VERSION" --json body -q .body)"
           printf '%s\n\n---\n📦 **JetBrains Marketplace:** %s\n' "$BODY" "$MP_URL" \
             | gh release edit "v$VERSION" --notes-file -
+
+      - name: Remove EAP pre-releases this release replaces
+        # Every EAP whose target version ("EAP <target> · eap-..." from build.yml) is at or below
+        # this release: the stable build replaces it, and older leftovers go too. Last step, so a
+        # failed publish keeps them. EAPs of a newer target stay.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            | jq -r '.[] | select(.prerelease and (.tag_name | startswith("eap-")) and (.name | startswith("EAP "))) | "\(.tag_name) \(.name | split(" ")[1])"' \
+            | while read -r tag target; do
+                if [ "$(printf '%s\n%s\n' "$target" "$VERSION" | sort -V | tail -1)" = "$VERSION" ]; then
+                  echo "Removing EAP $tag (target $target)"
+                  gh release delete "$tag" --cleanup-tag --yes
+                fi
+              done
