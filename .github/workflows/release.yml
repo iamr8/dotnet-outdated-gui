@@ -53,7 +53,8 @@ jobs:
   # environment (see it in the repo's Environments tab; add required reviewers there to gate publishing).
   deploy:
     needs: gate
-    if: needs.gate.outputs.release == 'true'
+    # `workflow_dispatch` runs on the branch picked in "Run workflow" (main by default), so the ref is checked too.
+    if: needs.gate.outputs.release == 'true' && github.ref == 'refs/heads/release'
     runs-on: ubuntu-latest
     environment:
       name: marketplace
