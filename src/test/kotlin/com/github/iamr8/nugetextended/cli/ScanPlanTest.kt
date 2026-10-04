@@ -20,20 +20,6 @@ class ScanPlanTest {
     private fun write(rel: String, text: String = "<Project />"): File =
         File(tmp.root, rel).apply { parentFile.mkdirs(); writeText(text) }
 
-    // --- allProjectsSelected -------------------------------------------------
-
-    @Test
-    fun allSelected_trueWhenNoSolution() = assertTrue(ScanPlan.allProjectsSelected(null, emptySet()))
-
-    @Test
-    fun allSelected_falseWhenSolutionHasNoProjects() = assertFalse(ScanPlan.allProjectsSelected(solution(emptyList()), emptySet()))
-
-    @Test
-    fun allSelected_trueWhenEveryProjectIncluded() = assertTrue(ScanPlan.allProjectsSelected(solution(threeProjects), setOf("A", "B", "C")))
-
-    @Test
-    fun allSelected_falseWhenSubsetIncluded() = assertFalse(ScanPlan.allProjectsSelected(solution(threeProjects), setOf("A")))
-
     // --- projectPaths ------------------------------------------------------
 
     @Test

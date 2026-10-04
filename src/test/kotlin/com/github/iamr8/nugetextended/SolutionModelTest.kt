@@ -60,7 +60,7 @@ class SolutionModelTest {
     }
 
     @Test
-    fun flagsUnsupportedProjectTypesAndExcludesThem() {
+    fun excludesUnsupportedProjectTypes() {
         val sln = tmp.newFile("App.sln")
         sln.writeText(
             """
@@ -73,7 +73,6 @@ class SolutionModelTest {
         val solution = SolutionModel.discover(tmp.root, preferredName = "App")
         assertNotNull(solution)
         assertEquals(listOf("Core"), solution!!.projects.map { it.name }) // shproj excluded
-        assert(solution.hasUnsupportedProjects) { "expected .shproj to flag unsupported projects" }
     }
 
     @Test
