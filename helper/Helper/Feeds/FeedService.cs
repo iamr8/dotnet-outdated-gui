@@ -98,15 +98,21 @@ public sealed class FeedService : IDisposable
     {
         var all = new List<NuGetVersion>();
         var failed = new List<SourceFailureInfo>();
+        // All sources start at once, so the time is the slowest source, not the sum. Results are read
+        // in source order. If several fail (IgnoreFailedSources off), the first in source order throws.
+        var pending = new List<Task<(IReadOnlyList<NuGetVersion> Value, SourceFailureInfo? Failure)>>();
         foreach (var source in ctx.For(id))
         {
             var key = source.PackageSource.Source + "|" + id;
-            var (list, failure) = await _versions.GetOrAdd(key, _ => new Lazy<Task<(IReadOnlyList<NuGetVersion>, SourceFailureInfo?)>>(
+            pending.Add(_versions.GetOrAdd(key, _ => new Lazy<Task<(IReadOnlyList<NuGetVersion>, SourceFailureInfo?)>>(
                 () => Guarded(source, async cache =>
                 {
                     var res = await source.GetResourceAsync<FindPackageByIdResource>(ct);
                     return (IReadOnlyList<NuGetVersion>)(await res.GetAllVersionsAsync(id, cache, Logger, ct)).ToList();
-                }, Array.Empty<NuGetVersion>(), ct))).Value;
+                }, Array.Empty<NuGetVersion>(), ct))).Value);
+        }
+        foreach (var (list, failure) in await WhenAllSources(pending, ct))
+        {
             all.AddRange(list);
             if (failure != null) failed.Add(failure);
         }
@@ -124,10 +130,13 @@ public sealed class FeedService : IDisposable
     {
         var all = new List<Candidate>();
         var failed = new List<SourceFailureInfo>();
+        // Same as [GetVersionsAsync]. Reading in source order keeps GroupBy(Version).First() below:
+        // the first source that has a version gives its metadata.
+        var pending = new List<Task<(IReadOnlyList<Candidate> Value, SourceFailureInfo? Failure)>>();
         foreach (var source in ctx.For(id))
         {
             var key = source.PackageSource.Source + "|" + id + "|" + includePrerelease;
-            var (list, failure) = await _candidates.GetOrAdd(key, _ => new Lazy<Task<(IReadOnlyList<Candidate>, SourceFailureInfo?)>>(
+            pending.Add(_candidates.GetOrAdd(key, _ => new Lazy<Task<(IReadOnlyList<Candidate>, SourceFailureInfo?)>>(
                 () => Guarded(source, async cache =>
                 {
                     var res = await source.GetResourceAsync<PackageMetadataResource>(ct);
@@ -138,11 +147,27 @@ public sealed class FeedService : IDisposable
                         m.Published,
                         (m.DependencySets ?? Enumerable.Empty<NuGet.Packaging.PackageDependencyGroup>())
                             .Select(g => g.TargetFramework).ToList())).ToList();
-                }, Array.Empty<Candidate>(), ct))).Value;
+                }, Array.Empty<Candidate>(), ct))).Value);
+        }
+        foreach (var (list, failure) in await WhenAllSources(pending, ct))
+        {
             all.AddRange(list);
             if (failure != null) failed.Add(failure);
         }
         return new CandidateList(all.GroupBy(c => c.Version).Select(g => g.First()).OrderBy(c => c.Version).ToList(), failed);
+    }
+
+    /// Task.WhenAll reports a fault before a cancel when both happen. A cancelled call must still end as a cancel.
+    private static async Task<T[]> WhenAllSources<T>(IEnumerable<Task<T>> tasks, CancellationToken ct)
+    {
+        try
+        {
+            return await Task.WhenAll(tasks);
+        }
+        catch (UserException) when (ct.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(ct);
+        }
     }
 
     /// Returns the failure alongside the (possibly empty) result, scoped to this one source+call,

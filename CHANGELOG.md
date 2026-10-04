@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Exact package upgrades.** Upgrading `Foo` no longer also upgrades `Foo.Bar`.
 - **Maximum version** never goes above a range's upper bound.
 - **Faster checks.** One engine per solution keeps project data between scans and uses NuGet's HTTP
-  cache.
+  cache. Package sources are asked at the same time, not one by one.
 
 ### Added
 - Versions in properties (`Version="$(PollyVersion)"`): the property is updated, and other packages
