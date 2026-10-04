@@ -56,7 +56,15 @@ public sealed class Server
                     await Task.WhenAll(running);
                     return 0;
                 case "cancel":
-                    if (req.Params.TryGetProperty("targetId", out var t) && t.GetInt32() == _activeId) CancelActive();
+                    // A bad cancel is a bad request, not a reason to exit the helper.
+                    if (req.Params.ValueKind != JsonValueKind.Object ||
+                        !req.Params.TryGetProperty("targetId", out var t) ||
+                        t.ValueKind != JsonValueKind.Number || !t.TryGetInt32(out var targetId))
+                    {
+                        Write(new ResponseLine(req.Id, null, new ErrorInfo("user", "cancel needs a numeric targetId.", null)));
+                        continue;
+                    }
+                    if (targetId == _activeId) CancelActive();
                     Write(new ResponseLine(req.Id, new { cancelled = true }, null));
                     continue;
             }
