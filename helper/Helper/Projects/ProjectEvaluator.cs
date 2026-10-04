@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Text.RegularExpressions;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Definition;
@@ -146,7 +147,17 @@ public sealed class ProjectEvaluator
         // Same write-then-re-check pattern as the MSBuild path below: snapshot the generation before
         // the (slow, out-of-process) evaluation, and if an Invalidate ran meanwhile, drop only this entry.
         var generation = Volatile.Read(ref _generation);
-        var result = FileBasedApps.Evaluate(path, _dotnetRoot, ct);
+        EvaluatedProject result;
+        try
+        {
+            result = FileBasedApps.Evaluate(path, _dotnetRoot, ct);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or Win32Exception)
+        {
+            // The file or its folder is gone or unreadable, or dotnet cannot start: a project error
+            // (like InvalidProjectFileException below), not a bug. Not cached.
+            return new EvaluatedProject(path, name, Array.Empty<EvaluatedTfm>(), new[] { path }, e.Message.Split('\n')[0].Trim());
+        }
         _cache[key] = result;
         if (Volatile.Read(ref _generation) != generation)
             _cache.TryRemove(new KeyValuePair<string, EvaluatedProject>(key, result));
