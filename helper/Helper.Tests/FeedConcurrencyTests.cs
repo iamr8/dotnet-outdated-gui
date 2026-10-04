@@ -81,7 +81,8 @@ public class FeedConcurrencyTests
 
     private static string? Target(HelperProcess h, string dir, string project)
     {
-        var r = h.Request("scan", new { solutionDir = dir, projects = new[] { project }, options = new { includeUpToDate = true } }).GetProperty("result");
+        var response = h.Request("scan", new { solutionDir = dir, projects = new[] { project }, options = new { includeUpToDate = true } });
+        Assert.True(response.TryGetProperty("result", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.Object, response.ToString());
         var row = r.GetProperty("projects")[0].GetProperty("frameworks")[0].GetProperty("packages").EnumerateArray()
             .Single(p => p.GetProperty("id").GetString() == "Pkg");
         return row.GetProperty("target").GetString();
