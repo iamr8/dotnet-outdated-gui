@@ -143,9 +143,10 @@ public class FeedConcurrencyTests
                 var path = ctx.Request.Url!.AbsolutePath;
                 if (path.EndsWith("/v3/index.json"))
                 {
+                    // 3.4.0: the oldest NuGet client in the supported range (SDK 6) does not know 3.6.0.
                     Json(ctx, 200, "{\"version\":\"3.0.0\",\"resources\":[" +
                         "{\"@id\":\"" + _baseUrl + "flat/\",\"@type\":\"PackageBaseAddress/3.0.0\"}," +
-                        "{\"@id\":\"" + _baseUrl + "reg/\",\"@type\":\"RegistrationsBaseUrl/3.6.0\"}]}");
+                        "{\"@id\":\"" + _baseUrl + "reg/\",\"@type\":\"RegistrationsBaseUrl/3.4.0\"}]}");
                     return;
                 }
                 var isFlat = path.Contains("/flat/");
