@@ -23,9 +23,7 @@ class DotnetRunner(private val dotnet: String = DotnetLocator.resolve()) {
         indicator: ProgressIndicator,
         afterUpgrade: Boolean,
     ): List<RunFailure> {
-        val commands = RestoreCommand.plan(dotnet, affected, solutionPath, solutionProjects, runtime, afterUpgrade) { project ->
-            File(project).resolveSibling("packages.lock.json").isFile
-        }
+        val commands = RestoreCommand.plan(dotnet, affected, solutionPath, solutionProjects, runtime, afterUpgrade)
         val env = restoreEnvironment(EnvironmentUtil.getEnvironmentMap())
         val failures = mutableListOf<RunFailure>()
         for (cmd in commands) {
