@@ -118,18 +118,22 @@ public sealed class Handlers
                 var versions = await feeds.GetVersionsAsync(ctx, g.First().A.Id, token);
                 var lowest = g.Where(w => w.A.Resolved != null).Select(w => w.A.Resolved!).DefaultIfEmpty().Min();
                 IReadOnlyList<Candidate>? list;
+                // The version list and the metadata call can fail on different sources: both count.
+                var failed = versions.Failed;
                 if (lowest != null && versions.Versions.Any(v => v > lowest))
                 {
                     // Anything that is not "Always" or "Never" is Auto (matches TargetSelector).
                     var includePre = o.PreRelease == "Always" ||
                         (o.PreRelease != "Never" && g.Any(w => w.A.Resolved?.IsPrerelease == true));
-                    list = await feeds.GetCandidatesAsync(ctx, g.First().A.Id, includePre, token);
+                    var detailed = await feeds.GetCandidatesDetailedAsync(ctx, g.First().A.Id, includePre, token);
+                    list = detailed.Candidates;
+                    failed = versions.Failed.Concat(detailed.Failed).DistinctBy(f => f.Source).ToList();
                 }
                 else list = Array.Empty<Candidate>();
                 var key = g.Key.Dir + "|" + g.Key.Sources + "|" + g.Key.Id;
                 candidates[key] = list;
                 if (versions.Failed.Count == 0) published[key] = new HashSet<NuGetVersion>(versions.Versions);
-                if (versions.Failed.Count > 0) groupFailed[key] = versions.Failed;
+                if (failed.Count > 0) groupFailed[key] = failed;
                 progress.Report($"Checked {Interlocked.Increment(ref done)} package(s)");
             });
             sourceFailures = feeds.Failures.Select(f => new SourceFailure(f.Source, f.Message, f.SignInNeeded)).ToList();

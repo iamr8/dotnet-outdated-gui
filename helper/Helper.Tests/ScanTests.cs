@@ -263,6 +263,64 @@ public class ScanTests
         Assert.Contains("sign-in needed", row.GetProperty("reason").GetString());
     }
 
+    // Break: Scan reads candidates with GetCandidatesAsync, which drops the failure of the metadata call.
+    [Fact]
+    public void FailedMetadataCallMarksRowInsteadOfHidingIt()
+    {
+        using var listener = new HttpListener();
+        var port = FreePort();
+        var root = $"http://127.0.0.1:{port}";
+        listener.Prefixes.Add($"{root}/");
+        listener.Start();
+        // A V3 feed whose version list (flat container) works but whose metadata (registration) fails.
+        _ = Task.Run(async () =>
+        {
+            while (listener.IsListening)
+            {
+                HttpListenerContext ctx;
+                try { ctx = await listener.GetContextAsync(); } catch { break; }
+                var body = ctx.Request.Url!.AbsolutePath switch
+                {
+                    "/v3/index.json" => $@"{{""version"":""3.0.0"",""resources"":[{{""@id"":""{root}/flat/"",""@type"":""PackageBaseAddress/3.0.0""}},{{""@id"":""{root}/reg/"",""@type"":""RegistrationsBaseUrl/3.6.0""}}]}}",
+                    "/flat/widget/index.json" => @"{""versions"":[""1.0.0"",""2.0.0""]}",
+                    _ => null,
+                };
+                if (body == null)
+                {
+                    ctx.Response.StatusCode = 500;
+                }
+                else
+                {
+                    ctx.Response.ContentType = "application/json";
+                    ctx.Response.OutputStream.Write(System.Text.Encoding.UTF8.GetBytes(body));
+                }
+                ctx.Response.Close();
+            }
+        });
+
+        var dir = FixtureSolution.NewDir();
+        var feed = FixtureFeed.Create(dir, ("Widget", new[] { "1.0.0" }));
+        FixtureSolution.WriteNuGetConfig(dir, ("local", feed));
+        FixtureSolution.Write(dir, "P/P.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFramework>{FixtureSolution.Tfm}</TargetFramework></PropertyGroup>
+  <ItemGroup><PackageReference Include=""Widget"" Version=""1.0.0"" /></ItemGroup>
+</Project>");
+        var project = Path.Combine(dir, "P/P.csproj");
+        FixtureSolution.Restore(project); // against the local feed only
+        FixtureSolution.Write(dir, "NuGet.config", $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<configuration>
+  <config><add key=""globalPackagesFolder"" value=""{Path.Combine(dir, ".packages")}"" /></config>
+  <packageSources><clear /><add key=""local"" value=""{feed}"" /><add key=""private"" value=""{root}/v3/index.json"" allowInsecureConnections=""true"" /></packageSources>
+</configuration>");
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project });
+
+        var row = Row(r, "Widget");
+        Assert.Equal(JsonValueKind.Null, row.GetProperty("target").ValueKind);
+        Assert.Contains("'private' failed", row.GetProperty("reason").GetString());
+    }
+
     [Fact]
     public void ProjectEvaluationFailureAppearsInFailuresOthersStillScan()
     {

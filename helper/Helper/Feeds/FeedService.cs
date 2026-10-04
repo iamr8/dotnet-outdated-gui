@@ -113,13 +113,9 @@ public sealed class FeedService : IDisposable
         return new VersionList(all.Distinct().OrderBy(v => v).ToList(), failed);
     }
 
-    /// Listed flag, publish date and dependency frameworks per version (registration: slower, only for ids with an upgrade).
-    public async Task<IReadOnlyList<Candidate>> GetCandidatesAsync(FeedContext ctx, string id, bool includePrerelease, CancellationToken ct) =>
-        (await GetCandidatesDetailedAsync(ctx, id, includePrerelease, ct)).Candidates;
-
-    /// Same as [GetCandidatesAsync], plus the per-call source failures (mirrors [GetVersionsAsync]
-    /// returning a [VersionList] instead of a bare version list) - a caller that needs to attribute a
-    /// missing candidate to a failed source, not only a genuinely absent version, uses this instead.
+    /// Listed flag, publish date and dependency frameworks per version (registration: slower, only for ids with an upgrade),
+    /// plus the per-call source failures (mirrors [GetVersionsAsync] returning a [VersionList]): a
+    /// missing candidate can then be attributed to a failed source, not only to a genuinely absent version.
     public async Task<CandidateList> GetCandidatesDetailedAsync(FeedContext ctx, string id, bool includePrerelease, CancellationToken ct)
     {
         var all = new List<Candidate>();
