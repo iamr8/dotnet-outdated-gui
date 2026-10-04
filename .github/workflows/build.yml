@@ -204,7 +204,9 @@ jobs:
           last="$(git tag -l 'v*' | sort -V | tail -1)"
           query="is:pr is:merged base:main"
           if [ -n "$last" ]; then
-            since="$(git log -1 --format=%cd --date=format:%Y-%m-%d "$last")"
+            # Full timestamp, not a date: a date-only `merged:>` skips that whole day, so PRs
+            # merged on release day after the tag would be missing.
+            since="$(git log -1 --format=%cI "$last")"
             query="$query merged:>$since"
             echo "base=$last" >> "$GITHUB_OUTPUT"
           else
