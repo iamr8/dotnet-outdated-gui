@@ -65,6 +65,10 @@ class HelperService(@Suppress("unused") private val project: Project) : Disposab
                     onProgress = { text -> indicator?.text2 = text },
                 )
             } catch (_: HelperCancelledException) {
+                // After the cancel grace the client marks itself closed (stuck helper): stop it now,
+                // as the timeout path does. Not when interrupted: stop() waits on the process and
+                // would throw InterruptedException instead of the cancel.
+                if (!proc.isAlive && !Thread.currentThread().isInterrupted) stop()
                 throw ProcessCanceledException()
             } catch (e: HelperTimeoutException) {
                 // The client may have marked itself closed after the cancel grace expired; don't
