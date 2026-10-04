@@ -273,6 +273,8 @@ public class ScanTests
         listener.Prefixes.Add($"{root}/");
         listener.Start();
         // A V3 feed whose version list (flat container) works but whose metadata (registration) fails.
+        // The index lists both registration types, as nuget.org does: the NuGet in SDK 6 knows
+        // RegistrationsBaseUrl/3.4.0 but not /3.6.0, and without a known type it throws (baseUrl is null).
         _ = Task.Run(async () =>
         {
             while (listener.IsListening)
@@ -281,7 +283,7 @@ public class ScanTests
                 try { ctx = await listener.GetContextAsync(); } catch { break; }
                 var body = ctx.Request.Url!.AbsolutePath switch
                 {
-                    "/v3/index.json" => $@"{{""version"":""3.0.0"",""resources"":[{{""@id"":""{root}/flat/"",""@type"":""PackageBaseAddress/3.0.0""}},{{""@id"":""{root}/reg/"",""@type"":""RegistrationsBaseUrl/3.6.0""}}]}}",
+                    "/v3/index.json" => $@"{{""version"":""3.0.0"",""resources"":[{{""@id"":""{root}/flat/"",""@type"":""PackageBaseAddress/3.0.0""}},{{""@id"":""{root}/reg/"",""@type"":""RegistrationsBaseUrl/3.4.0""}},{{""@id"":""{root}/reg/"",""@type"":""RegistrationsBaseUrl/3.6.0""}}]}}",
                     "/flat/widget/index.json" => @"{""versions"":[""1.0.0"",""2.0.0""]}",
                     _ => null,
                 };
