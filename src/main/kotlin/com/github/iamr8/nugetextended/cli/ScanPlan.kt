@@ -1,6 +1,7 @@
 package com.github.iamr8.nugetextended.cli
 
 import java.io.File
+import java.io.IOException
 
 /** Pure: which project files a scan covers. The engine takes a list of paths, so there is no per-tool split any more. */
 object ScanPlan {
@@ -36,11 +37,15 @@ object ScanPlan {
         return (projects + apps).distinct()
     }
 
-    /** A `.cs` file with a `#:package` directive near the top (SDK 10 file-based app). */
+    /** A `.cs` file with a `#:package` directive near the top (SDK 10 file-based app). An unreadable file is not one. */
     fun isFileBasedApp(file: File): Boolean {
         if (!file.isFile || !file.extension.equals("cs", ignoreCase = true)) return false
-        return file.bufferedReader().useLines { lines ->
-            lines.take(DIRECTIVE_LINES).any { it.trimStart().startsWith("#:package ") }
+        return try {
+            file.bufferedReader().useLines { lines ->
+                lines.take(DIRECTIVE_LINES).any { it.trimStart().startsWith("#:package ") }
+            }
+        } catch (_: IOException) {
+            false // the engine could not scan it either; one bad file must not fail the whole scan
         }
     }
 
