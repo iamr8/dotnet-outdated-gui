@@ -48,6 +48,40 @@ class SolutionModelTest {
         assertEquals(listOf("Web", "Web.Tests"), projects.map { it.name })
     }
 
+    // Break: key the parsed projects by name, so the second "Foo" is dropped.
+    @Test
+    fun keepsTwoProjectsWithTheSameName() {
+        val slnx = tmp.newFile("App.slnx")
+        slnx.writeText(
+            """
+            <Solution>
+              <Project Path="src/Foo/Foo.csproj" />
+              <Project Path="tests/Foo/Foo.csproj" />
+            </Solution>
+            """.trimIndent(),
+        )
+        val projects = SolutionModel.parseProjects(slnx)
+        assertEquals(listOf("Foo", "Foo"), projects.map { it.name })
+        assertEquals(
+            listOf(tmp.root.resolve("src/Foo/Foo.csproj").path, tmp.root.resolve("tests/Foo/Foo.csproj").path),
+            projects.map { it.path },
+        )
+    }
+
+    @Test
+    fun listsOneProjectOnceWhenTwoPathSpellingsMeetOnTheSameFile() {
+        val slnx = tmp.newFile("App.slnx")
+        slnx.writeText(
+            """
+            <Solution>
+              <Project Path="src/Foo/Foo.csproj" />
+              <Project Path="src/Bar/../Foo/Foo.csproj" />
+            </Solution>
+            """.trimIndent(),
+        )
+        assertEquals(1, SolutionModel.parseProjects(slnx).size)
+    }
+
     @Test
     fun discoverPrefersSolutionMatchingProjectName() {
         tmp.newFile("Other.sln").writeText("")
@@ -60,7 +94,7 @@ class SolutionModelTest {
     }
 
     @Test
-    fun flagsUnsupportedProjectTypesAndExcludesThem() {
+    fun excludesUnsupportedProjectTypes() {
         val sln = tmp.newFile("App.sln")
         sln.writeText(
             """
@@ -73,7 +107,6 @@ class SolutionModelTest {
         val solution = SolutionModel.discover(tmp.root, preferredName = "App")
         assertNotNull(solution)
         assertEquals(listOf("Core"), solution!!.projects.map { it.name }) // shproj excluded
-        assert(solution.hasUnsupportedProjects) { "expected .shproj to flag unsupported projects" }
     }
 
     @Test

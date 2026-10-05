@@ -1,3 +1,4 @@
+using System.Text.Json;
 using NuGetExtended.Helper.Tests.Fixtures;
 using Xunit;
 
@@ -51,5 +52,23 @@ public class FileAppsTests
         Assert.DoesNotContain('\n', error!);
         Assert.True(error!.Length < 200);
         Assert.Empty(p.GetProperty("frameworks").EnumerateArray());
+    }
+
+    // Break: no catch around FileBasedApps.Evaluate, so an I/O error from Process.Start escapes as a bug.
+    [Fact]
+    public void ProcessStartFailureIsAProjectErrorNotABug()
+    {
+        var dir = FixtureSolution.NewDir();
+        using var h = HelperProcess.Start(dir);
+        var sdk = Version.Parse(h.HelloLine.GetProperty("data").GetProperty("sdkVersion").GetString()!.Split('-')[0]);
+        if (sdk.Major < 10) return; // file-based apps need SDK 10
+
+        // The app's folder does not exist, so Process.Start fails before dotnet runs.
+        var r = h.Request("evaluate", new { path = Path.Combine(dir, "Missing", "app.cs"), runtime = "" });
+
+        Assert.Equal(JsonValueKind.Null, r.GetProperty("error").ValueKind);
+        var error = r.GetProperty("result").GetProperty("error").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(error));
+        Assert.DoesNotContain('\n', error!);
     }
 }

@@ -54,7 +54,7 @@ class HelperService(@Suppress("unused") private val project: Project) : Disposab
         indicator: ProgressIndicator?,
     ): T {
         ApplicationManager.getApplication().assertIsNonDispatchThread()
-        var restarted = false
+        val restartOnce = RestartOnce()
         while (true) {
             val proc = ensure(workDir)
             try {
@@ -65,6 +65,10 @@ class HelperService(@Suppress("unused") private val project: Project) : Disposab
                     onProgress = { text -> indicator?.text2 = text },
                 )
             } catch (_: HelperCancelledException) {
+                // After the cancel grace the client marks itself closed (stuck helper): stop it now,
+                // as the timeout path does. Not when interrupted: stop() waits on the process and
+                // would throw InterruptedException instead of the cancel.
+                if (!proc.isAlive && !Thread.currentThread().isInterrupted) stop()
                 throw ProcessCanceledException()
             } catch (e: HelperTimeoutException) {
                 // The client may have marked itself closed after the cancel grace expired; don't
@@ -73,8 +77,7 @@ class HelperService(@Suppress("unused") private val project: Project) : Disposab
                 throw e
             } catch (e: HelperCrashedException) {
                 stop()
-                if (restarted || disposed) throw e
-                restarted = true
+                if (!restartOnce.allow(disposed)) throw e
                 LOG.warn("${PluginText.NAME}: engine stopped, starting it again\n${e.details.orEmpty()}")
             }
         }
@@ -146,5 +149,16 @@ class HelperService(@Suppress("unused") private val project: Project) : Disposab
                 changed.addAll(paths)
                 throw e
             }
+    }
+}
+
+/** One per [HelperService.call]: a crash is retried once, and never after the service is disposed. */
+internal class RestartOnce {
+    private var restarted = false
+
+    fun allow(disposed: Boolean): Boolean {
+        if (restarted || disposed) return false
+        restarted = true
+        return true
     }
 }

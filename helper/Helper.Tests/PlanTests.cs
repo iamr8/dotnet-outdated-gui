@@ -132,6 +132,46 @@ public class PlanTests
         Assert.Equal("7.2.4", edit.GetProperty("value").GetString());
     }
 
+    // Break: PlanUpgrade fetches candidates once per id, in the first consumer's feed context, for every consumer.
+    [Fact]
+    public void EachConsumerOfASharedPropertyIsCheckedInItsOwnFeedContext()
+    {
+        var dir = FixtureSolution.NewDir();
+        Directory.CreateDirectory(Path.Combine(dir, ".git"));
+        // A's feed has Polly 7.2.4. B's feed does not, so B could not restore it: the plan must skip.
+        var feedA = FixtureFeed.Create(Path.Combine(dir, "feedA"), ("Polly", new[] { "7.0.0", "7.2.4" }));
+        var feedB = FixtureFeed.Create(Path.Combine(dir, "feedB"), ("Polly", new[] { "7.0.0" }));
+        FixtureSolution.WriteNuGetConfig(dir);
+        FixtureSolution.Write(dir, "Directory.Build.props", @"<Project>
+  <PropertyGroup><PollyVer>7.0.0</PollyVer></PropertyGroup>
+</Project>");
+        foreach (var (name, feed) in new[] { ("A", feedA), ("B", feedB) })
+            FixtureSolution.Write(dir, $"{name}/{name}.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>{FixtureSolution.Tfm}</TargetFramework>
+    <RestoreAdditionalProjectSources>{feed}</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+  <ItemGroup><PackageReference Include=""Polly"" Version=""$(PollyVer)"" /></ItemGroup>
+</Project>");
+        var a = Path.Combine(dir, "A/A.csproj");
+        var b = Path.Combine(dir, "B/B.csproj");
+        FixtureSolution.Restore(a);
+        FixtureSolution.Restore(b);
+        using var h = HelperProcess.Start(dir);
+
+        var plan = h.Request("planUpgrade", new
+        {
+            solutionDir = dir,
+            allProjects = new[] { a, b },
+            rows = new[] { new { project = a, framework = FixtureSolution.Tfm, id = "Polly", target = "7.2.4" } },
+            options = new { },
+        }).GetProperty("result");
+
+        Assert.Empty(plan.GetProperty("edits").EnumerateArray());
+        var skip = Assert.Single(plan.GetProperty("skipped").EnumerateArray());
+        Assert.Equal("no version fits every project that shares this version", skip.GetProperty("reason").GetString());
+    }
+
     [Fact]
     public void FailedSourceExplainsAPropertySiteSkipInsteadOfTheGenericReason()
     {

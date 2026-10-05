@@ -22,7 +22,7 @@ public static class RowBuilder
     }
 
     /// The assets facts a row needs (a plain copy, so Core does not depend on NuGet.ProjectModel).
-    public sealed record Asset(string Id, NuGetVersion? Resolved, bool Direct, int Depth, bool AutoReferenced, bool PrivateAssetsAll);
+    public sealed record Asset(string Id, NuGetVersion? Resolved, bool Direct, int Depth, bool AutoReferenced);
 
     public static PackageRow Row(Asset asset, string requested, IReadOnlyList<Candidate>? candidates,
         NuGetFramework framework, ScanOptions options, DateTimeOffset now)
@@ -35,7 +35,7 @@ public static class RowBuilder
             return new PackageRow(asset.Id, requested, resolved?.ToNormalizedString(), null, "None", null, false, !asset.Direct,
                 asset.AutoReferenced, resolved == null ? "not resolved - restore the project" : null);
 
-        var s = TargetSelector.Select(range, resolved, candidates, framework, asset.PrivateAssetsAll, options, now);
+        var s = TargetSelector.Select(range, resolved, candidates, framework, options, now);
         return new PackageRow(
             asset.Id,
             requested,

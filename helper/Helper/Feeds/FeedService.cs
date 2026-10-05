@@ -75,21 +75,35 @@ public sealed class FeedService : IDisposable
 
     public IReadOnlyList<SourceFailureInfo> Failures => _failures.Values.ToList();
 
-    public FeedContext Context(string projectDir, IReadOnlyList<string> extraSources)
+    /// [restoreSources] (the project's RestoreSources) replace the NuGet.config sources when there are any;
+    /// [additionalSources] (RestoreAdditionalProjectSources) are added to whichever sources apply.
+    public FeedContext Context(string projectDir, IReadOnlyList<string> restoreSources, IReadOnlyList<string>? additionalSources = null)
     {
-        var key = projectDir + "|" + string.Join(";", extraSources);
+        var key = projectDir + "|" + string.Join(";", restoreSources) + "|" + string.Join(";", additionalSources ?? Array.Empty<string>());
         return _contexts.GetOrAdd(key, _ =>
         {
             var settings = Settings.LoadDefaultSettings(projectDir);
-            var enabled = SettingsUtility.GetEnabledSources(settings).ToList();
-            foreach (var extra in extraSources)
-                if (!enabled.Any(s => string.Equals(s.Source, extra, StringComparison.OrdinalIgnoreCase)))
-                    enabled.Add(new PackageSource(extra));
+            var configured = SettingsUtility.GetEnabledSources(settings).ToList();
+            var enabled = restoreSources.Count > 0
+                ? restoreSources.Select(r => FromProject(r, projectDir, configured)).ToList()
+                : configured;
+            foreach (var extra in (additionalSources ?? Array.Empty<string>()).Select(e => FromProject(e, projectDir, configured)))
+                if (!enabled.Any(s => string.Equals(s.Source, extra.Source, StringComparison.OrdinalIgnoreCase)))
+                    enabled.Add(extra);
             var provider = Repository.Provider.GetCoreV3();
             return new FeedContext(
                 enabled.Select(s => new SourceRepository(s, provider)).ToList(),
                 PackageSourceMapping.GetPackageSourceMapping(settings));
         });
+    }
+
+    /// A source from a project property. A relative folder is relative to the project folder, as in
+    /// restore (not to this process's folder). A source that NuGet.config also lists keeps its name and credentials.
+    private static PackageSource FromProject(string source, string projectDir, IReadOnlyList<PackageSource> configured)
+    {
+        if (!Uri.TryCreate(source, UriKind.Absolute, out _) && !Path.IsPathRooted(source))
+            source = Path.GetFullPath(source, projectDir);
+        return configured.FirstOrDefault(c => string.Equals(c.Source, source, StringComparison.OrdinalIgnoreCase)) ?? new PackageSource(source);
     }
 
     /// All versions of [id] from the allowed sources (flat container: fast). Failures are recorded
@@ -119,13 +133,9 @@ public sealed class FeedService : IDisposable
         return new VersionList(all.Distinct().OrderBy(v => v).ToList(), failed);
     }
 
-    /// Listed flag, publish date and dependency frameworks per version (registration: slower, only for ids with an upgrade).
-    public async Task<IReadOnlyList<Candidate>> GetCandidatesAsync(FeedContext ctx, string id, bool includePrerelease, CancellationToken ct) =>
-        (await GetCandidatesDetailedAsync(ctx, id, includePrerelease, ct)).Candidates;
-
-    /// Same as [GetCandidatesAsync], plus the per-call source failures (mirrors [GetVersionsAsync]
-    /// returning a [VersionList] instead of a bare version list) - a caller that needs to attribute a
-    /// missing candidate to a failed source, not only a genuinely absent version, uses this instead.
+    /// Listed flag, publish date and dependency frameworks per version (registration: slower, only for ids with an upgrade),
+    /// plus the per-call source failures (mirrors [GetVersionsAsync] returning a [VersionList]): a
+    /// missing candidate can then be attributed to a failed source, not only to a genuinely absent version.
     public async Task<CandidateList> GetCandidatesDetailedAsync(FeedContext ctx, string id, bool includePrerelease, CancellationToken ct)
     {
         var all = new List<Candidate>();

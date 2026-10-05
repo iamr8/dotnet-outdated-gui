@@ -5,7 +5,7 @@ using NuGet.Versioning;
 
 namespace NuGetExtended.Helper.Projects;
 
-public sealed record AssetPackage(string Id, string? RequestedRange, NuGetVersion? Resolved, bool Direct, int Depth, bool AutoReferenced, bool PrivateAssetsAll);
+public sealed record AssetPackage(string Id, string? RequestedRange, NuGetVersion? Resolved, bool Direct, int Depth, bool AutoReferenced);
 
 public sealed record AssetsData(IReadOnlyList<AssetPackage> Packages, IReadOnlyDictionary<string, VersionRange?> DirectRanges, bool HasRuntimeTarget);
 
@@ -54,8 +54,7 @@ public static class AssetsReader
         {
             var id = dep.Name;
             resolved.TryGetValue(id, out var lib);
-            result.Add(new AssetPackage(id, dep.LibraryRange.VersionRange?.ToString(), lib?.Version, true, 0, dep.AutoReferenced,
-                dep.SuppressParent == LibraryIncludeFlags.All));
+            result.Add(new AssetPackage(id, dep.LibraryRange.VersionRange?.ToString(), lib?.Version, true, 0, dep.AutoReferenced));
             depth[id] = 0;
             queue.Enqueue(id);
         }
@@ -68,7 +67,7 @@ public static class AssetsReader
             {
                 if (depth.ContainsKey(child.Id) || !resolved.TryGetValue(child.Id, out var childLib)) continue;
                 depth[child.Id] = depth[id] + 1;
-                result.Add(new AssetPackage(child.Id, child.VersionRange?.ToString(), childLib.Version, false, depth[child.Id], false, false));
+                result.Add(new AssetPackage(child.Id, child.VersionRange?.ToString(), childLib.Version, false, depth[child.Id], false));
                 queue.Enqueue(child.Id);
             }
         }
