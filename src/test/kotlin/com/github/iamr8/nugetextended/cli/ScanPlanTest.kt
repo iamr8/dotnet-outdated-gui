@@ -3,6 +3,7 @@ package com.github.iamr8.nugetextended.cli
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -19,20 +20,6 @@ class ScanPlanTest {
 
     private fun write(rel: String, text: String = "<Project />"): File =
         File(tmp.root, rel).apply { parentFile.mkdirs(); writeText(text) }
-
-    // --- allProjectsSelected -------------------------------------------------
-
-    @Test
-    fun allSelected_trueWhenNoSolution() = assertTrue(ScanPlan.allProjectsSelected(null, emptySet()))
-
-    @Test
-    fun allSelected_falseWhenSolutionHasNoProjects() = assertFalse(ScanPlan.allProjectsSelected(solution(emptyList()), emptySet()))
-
-    @Test
-    fun allSelected_trueWhenEveryProjectIncluded() = assertTrue(ScanPlan.allProjectsSelected(solution(threeProjects), setOf("/repo/A/A.csproj", "/repo/B/B.csproj", "/repo/C/C.csproj")))
-
-    @Test
-    fun allSelected_falseWhenSubsetIncluded() = assertFalse(ScanPlan.allProjectsSelected(solution(threeProjects), setOf("/repo/A/A.csproj")))
 
     // --- projectPaths ------------------------------------------------------
 
@@ -80,6 +67,21 @@ class ScanPlanTest {
         // The app setting alone searches subfolders; "projects in subfolders" is about .csproj files.
         assertEquals(listOf(app.path), ScanPlan.projectPaths(null, emptySet(), tmp.root, recursive = false, includeFileBasedApps = true))
         assertEquals(listOf(app.path), ScanPlan.projectPaths(null, emptySet(), tmp.root, recursive = true, includeFileBasedApps = true))
+    }
+
+    @Test
+    fun anUnreadableCsFileIsSkippedNotThrown() {
+        // Break: remove the IOException catch in ScanPlan.isFileBasedApp, so one bad file fails the whole scan.
+        val app = write("tools/app.cs", "#:package X@1.0.0\n")
+        val bad = write("tools/bad.cs", "#:package Y@1.0.0\n")
+        bad.setReadable(false)
+        try {
+            assumeFalse("this OS still lets us read the file (e.g. running as root)", bad.canRead())
+            assertEquals(listOf(app.path), ScanPlan.projectPaths(null, emptySet(), tmp.root, recursive = true, includeFileBasedApps = true))
+            assertFalse(ScanPlan.isFileBasedApp(bad))
+        } finally {
+            bad.setReadable(true)
+        }
     }
 
     @Test

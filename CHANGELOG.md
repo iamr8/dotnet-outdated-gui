@@ -63,6 +63,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two projects with the same name (`src/Foo`, `tests/Foo`) are both listed and scanned.
 - A file-based app that cannot be read (deleted, folder gone, `dotnet` cannot start) is listed as
   a skipped project. Before, it opened the IDE error report.
+- A project added to the solution after the tool window opened is now found. The project list is
+  read again before each scan and each upgrade. Projects you left out of the **Scope** stay out.
+- The project search no longer freezes the IDE, and a failure there no longer leaves the toolbar
+  disabled. It runs in the background with the scan. A `.cs` file it cannot read is skipped.
+  A solution file it cannot read no longer breaks the tool window or the scan. A balloon says so once.
 
 ## [0.1.4] - 2026-08-29
 

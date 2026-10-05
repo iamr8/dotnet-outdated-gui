@@ -117,12 +117,14 @@ UI behavior that no check can cover is confirmed by installing the built zip in 
 ## CI / release
 
 - Workflows: `build.yml` (test + verify + buildPlugin + **Plugin Verifier on the current Rider** +
-  artifact), `codeql.yml` (security;
-  CodeQL needs a real compile — `clean --no-daemon --no-build-cache`), `compatibility.yml`
+  artifact), `codeql.yml` (security; two jobs. java-kotlin needs a real compile:
+  `clean --no-daemon --no-build-cache`. csharp (the helper) uses `build-mode: none`), `compatibility.yml`
   (weekly plugin verifier, pinned to released Riders across the range — 2024.3.6 / 2025.2.4 /
   2026.1.4 / 2026.2; `recommended()` can resolve 404 EAPs),
-  `release.yml`, plus Dependabot. Actions are pinned to latest majors. `build.yml`, `codeql.yml`,
-  `release.yml` and `compatibility.yml` install the .NET SDK (`actions/setup-dotnet@v6`);
+  `release.yml`, plus Dependabot. Actions are pinned to latest majors. `build.yml`, `release.yml`
+  and `compatibility.yml` install the .NET SDK (`actions/setup-dotnet@v6`); `codeql.yml` does not
+  (no Gradle task it runs reaches the helper build). `build.yml` and `codeql.yml` cancel a
+  superseded run on a PR (`concurrency`); runs on `main`, `release`, schedule and dispatch are never cancelled.
   `build.yml` also runs the helper tests on SDK 6/8/10 and a packaging check that starts the
   bundled helper.
 - **EAP dev builds**: every successful `build.yml` run on **`main`** publishes an **EAP GitHub
@@ -134,6 +136,8 @@ UI behavior that no check can cover is confirmed by installing the built zip in 
   milestone) and list the PRs merged since the last stable `v*` tag. For local testing: download the
   zip, install via Settings → Plugins → ⚙ → Install from Disk; uninstall it before installing a
   Marketplace release.
+  When `release.yml` ships `v<VERSION>`, its last step deletes every EAP pre-release (and tag) whose
+  target version is at or below `<VERSION>`.
 - **Release model**: branch-based.
   - `main` = development; `build.yml` builds + verifies + publishes an EAP pre-release (above).
     It never publishes to the Marketplace.
