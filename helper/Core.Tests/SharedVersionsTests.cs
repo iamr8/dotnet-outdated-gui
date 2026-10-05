@@ -16,7 +16,7 @@ public class SharedVersionsTests
     private static ValueSite Meta(string id, string raw) =>
         new("metadata", $"{Root}/A/A.csproj", 4, 5, "Version", "attribute", raw, "PackageReference", "Include", id, null, null);
 
-    private static PackageItem Ref(string id, ValueSite site) => new(id, "PackageReference", site.RawText, null, site, null, null, false);
+    private static PackageItem Ref(string id, ValueSite site) => new(id, "PackageReference", site.RawText, null, site, null, null);
 
     private static EvaluatedProject Proj(string name, params PackageItem[] items) =>
         new($"{Root}/{name}/{name}.csproj", name, new[] { new EvaluatedTfm("net8.0", "", false, false, null, items, Array.Empty<string>()) },

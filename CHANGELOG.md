@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Maximum version** never goes above a range's upper bound.
 - **Faster checks.** One engine per solution keeps project data between scans and uses NuGet's HTTP
   cache.
+- **Private packages are checked too.** A package with `PrivateAssets="all"` is now checked against
+  the project's target framework like any other. A new version that drops the framework is no
+  longer offered.
 
 ### Added
 - Versions in properties (`Version="$(PollyVersion)"`): the property is updated, and other packages
@@ -43,6 +46,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Maximum version** accepts a single number (`8` means any 8.x), and the settings page rejects
   text it can't read instead of ignoring it.
 - **Include file-based apps** works on its own; it no longer needs "Find projects in subfolders".
+- A version shared by several projects is now checked in each project's own NuGet.config and
+  sources, not only those of the first project.
+- `RestoreSources` in a project now replaces the NuGet.config sources, as restore does.
+  `RestoreAdditionalProjectSources` still adds to them. A relative folder in either one is
+  relative to the project folder.
+- Floating versions (`2.*`) now update in projects whose lock file has any name
+  (`NuGetLockFilePath`, `packages.<project>.lock.json`), not only `packages.lock.json`. Only the
+  projects of the checked floating packages are re-resolved.
+- A package is marked with the failed source when its version list loads but its metadata call
+  fails. Before, the row was hidden.
+- A version in a child element with its own condition (`<Version Condition="...">`) is skipped
+  with a reason, not edited.
+- A transitive package added as a reference now needs a version that supports every target
+  framework of the project.
+- Two projects with the same name (`src/Foo`, `tests/Foo`) are both listed and scanned.
+- A file-based app that cannot be read (deleted, folder gone, `dotnet` cannot start) is listed as
+  a skipped project. Before, it opened the IDE error report.
 - A project added to the solution after the tool window opened is now found. The project list is
   read again before each scan and each upgrade. Projects you left out of the **Scope** stay out.
 - The project search no longer freezes the IDE, and a failure there no longer leaves the toolbar

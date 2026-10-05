@@ -25,8 +25,17 @@ class ScanPlanTest {
 
     @Test
     fun solutionGivesIncludedProjects() {
-        val paths = ScanPlan.projectPaths(solution(threeProjects), setOf("A", "C"), tmp.root, recursive = false, includeFileBasedApps = false)
+        val paths = ScanPlan.projectPaths(solution(threeProjects), setOf("/repo/A/A.csproj", "/repo/C/C.csproj"), tmp.root, recursive = false, includeFileBasedApps = false)
         assertEquals(listOf("/repo/A/A.csproj", "/repo/C/C.csproj"), paths)
+    }
+
+    // Break: match includedProjects by project name, so both "Foo" projects are scanned.
+    @Test
+    fun includedProjectsAreMatchedByPathNotName() {
+        val src = project("Foo", "/repo/src/Foo/Foo.csproj")
+        val tests = project("Foo", "/repo/tests/Foo/Foo.csproj")
+        val paths = ScanPlan.projectPaths(solution(listOf(src, tests)), setOf(tests.key), tmp.root, recursive = false, includeFileBasedApps = false)
+        assertEquals(listOf("/repo/tests/Foo/Foo.csproj"), paths)
     }
 
     @Test

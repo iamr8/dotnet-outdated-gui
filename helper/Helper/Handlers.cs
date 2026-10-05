@@ -68,7 +68,7 @@ public sealed class Handlers
                 if (a.AutoReferenced && !o.IncludeAutoReferences) continue;
                 if (!a.Direct && (!o.Transitive || a.Depth > o.TransitiveDepth)) continue;
                 var requested = a.Direct ? RowBuilder.Requested(tfm, a.Id) ?? a.RequestedRange ?? "" : a.RequestedRange ?? "";
-                work.Add((e, tfm, new RowBuilder.Asset(a.Id, a.Resolved, a.Direct, a.Depth, a.AutoReferenced, a.PrivateAssetsAll), requested));
+                work.Add((e, tfm, new RowBuilder.Asset(a.Id, a.Resolved, a.Direct, a.Depth, a.AutoReferenced), requested));
             }
         }
 
@@ -87,7 +87,7 @@ public sealed class Handlers
             // A new instance per scan, not one for the process: a long-lived FeedService keeps
             // stale source failures and settings (see the comment on FeedService itself).
             using var feeds = new FeedService(o);
-            var groups = work.GroupBy(w => (Dir: Path.GetDirectoryName(w.P.Path)!, Sources: string.Join(";", w.T.RestoreSources), Id: w.A.Id.ToLowerInvariant())).ToList();
+            var groups = work.GroupBy(w => (Dir: Path.GetDirectoryName(w.P.Path)!, Sources: FeedKey.Sources(w.T), Id: w.A.Id.ToLowerInvariant())).ToList();
 
             // Contexts are primed one at a time, before the parallel fetch loop, keyed by (Dir,
             // Sources) - both plain strings, so this actually dedupes (a Distinct() over tuples
@@ -103,7 +103,7 @@ public sealed class Handlers
             {
                 try
                 {
-                    feeds.Context(group.Key.Dir, group.First().T.RestoreSources);
+                    feeds.Context(group.Key.Dir, group.First().T.RestoreSources, group.First().T.AdditionalSources);
                 }
                 catch (NuGetConfigurationException e)
                 {
@@ -114,22 +114,26 @@ public sealed class Handlers
             var done = 0;
             await Parallel.ForEachAsync(groups, new ParallelOptions { MaxDegreeOfParallelism = 32, CancellationToken = ct }, async (g, token) =>
             {
-                var ctx = feeds.Context(g.Key.Dir, g.First().T.RestoreSources);
+                var ctx = feeds.Context(g.Key.Dir, g.First().T.RestoreSources, g.First().T.AdditionalSources);
                 var versions = await feeds.GetVersionsAsync(ctx, g.First().A.Id, token);
                 var lowest = g.Where(w => w.A.Resolved != null).Select(w => w.A.Resolved!).DefaultIfEmpty().Min();
                 IReadOnlyList<Candidate>? list;
+                // The version list and the metadata call can fail on different sources: both count.
+                var failed = versions.Failed;
                 if (lowest != null && versions.Versions.Any(v => v > lowest))
                 {
                     // Anything that is not "Always" or "Never" is Auto (matches TargetSelector).
                     var includePre = o.PreRelease == "Always" ||
                         (o.PreRelease != "Never" && g.Any(w => w.A.Resolved?.IsPrerelease == true));
-                    list = await feeds.GetCandidatesAsync(ctx, g.First().A.Id, includePre, token);
+                    var detailed = await feeds.GetCandidatesDetailedAsync(ctx, g.First().A.Id, includePre, token);
+                    list = detailed.Candidates;
+                    failed = versions.Failed.Concat(detailed.Failed).DistinctBy(f => f.Source).ToList();
                 }
                 else list = Array.Empty<Candidate>();
                 var key = g.Key.Dir + "|" + g.Key.Sources + "|" + g.Key.Id;
                 candidates[key] = list;
                 if (versions.Failed.Count == 0) published[key] = new HashSet<NuGetVersion>(versions.Versions);
-                if (versions.Failed.Count > 0) groupFailed[key] = versions.Failed;
+                if (failed.Count > 0) groupFailed[key] = failed;
                 progress.Report($"Checked {Interlocked.Increment(ref done)} package(s)");
             });
             sourceFailures = feeds.Failures.Select(f => new SourceFailure(f.Source, f.Message, f.SignInNeeded)).ToList();
@@ -190,9 +194,10 @@ public sealed class Handlers
         var allProjects = DistinctPaths(p.AllProjects);
         var all = _evaluator.EvaluateAll(allProjects, o.Runtime, ct, n => progress.Report($"Evaluated {n} of {allProjects.Count} project(s)"));
 
-        // Every id that shares an edit site with one of the rows (including sites shared by more
-        // than the row's own id or TFM): EditPlanner.Plan's known-version and TFM checks read
-        // Candidate data for every consumer of a touched site, not only the row's own id.
+        // Every (project, tfm, id) that shares an edit site with one of the rows (including sites shared
+        // by more than the row's own id or TFM): EditPlanner.Plan's known-version and TFM checks read
+        // Candidate data for every consumer of a touched site, from that consumer's own feed context
+        // (NuGet.config folder + restore sources), not only the row's. Keyed by GroupKey, like Scan.
         var need = EditPlanner.IdsNeedingCandidates(p.Rows, all);
         var candidates = new ConcurrentDictionary<string, IReadOnlyList<Candidate>>(StringComparer.OrdinalIgnoreCase);
         var idFailures = new ConcurrentDictionary<string, SourceFailureInfo>(StringComparer.OrdinalIgnoreCase);
@@ -203,11 +208,11 @@ public sealed class Handlers
 
             // Contexts are primed first, one at a time per (dir, sources) group, so a bad
             // NuGet.config fails fast and translates to UserException in one place - same as Scan.
-            foreach (var group in need.GroupBy(kv => (Dir: Path.GetDirectoryName(kv.Value.ProjectPath)!, Sources: string.Join(";", kv.Value.Tfm.RestoreSources))))
+            foreach (var group in need.GroupBy(n => (Dir: Path.GetDirectoryName(n.ProjectPath)!, Sources: FeedKey.Sources(n.Tfm))))
             {
                 try
                 {
-                    feeds.Context(group.Key.Dir, group.First().Value.Tfm.RestoreSources);
+                    feeds.Context(group.Key.Dir, group.First().Tfm.RestoreSources, group.First().Tfm.AdditionalSources);
                 }
                 catch (NuGetConfigurationException e)
                 {
@@ -215,18 +220,19 @@ public sealed class Handlers
                 }
             }
 
-            await Parallel.ForEachAsync(need, new ParallelOptions { MaxDegreeOfParallelism = 32, CancellationToken = ct }, async (kv, token) =>
+            await Parallel.ForEachAsync(need, new ParallelOptions { MaxDegreeOfParallelism = 32, CancellationToken = ct }, async (n, token) =>
             {
-                var (id, (projectPath, tfm)) = kv;
-                var ctx = feeds.Context(Path.GetDirectoryName(projectPath)!, tfm.RestoreSources);
+                var (projectPath, tfm, id) = n;
+                var ctx = feeds.Context(Path.GetDirectoryName(projectPath)!, tfm.RestoreSources, tfm.AdditionalSources);
                 // GetCandidatesDetailedAsync's own Failed list is scoped to this one id and this one
                 // call - FeedService.Failures is process-wide, keyed only by source name, and would
                 // misattribute a different id's failure on the same source under parallelism.
                 // includePrerelease: true - the target itself was already chosen (and filtered) by
                 // the scan; this fetch only needs to know whether it exists and what it depends on.
                 var result = await feeds.GetCandidatesDetailedAsync(ctx, id, includePrerelease: true, token);
-                candidates[id] = result.Candidates;
-                if (result.Failed.Count > 0) idFailures[id] = result.Failed[0];
+                var key = GroupKey(projectPath, tfm, id);
+                candidates[key] = result.Candidates;
+                if (result.Failed.Count > 0) idFailures[key] = result.Failed[0];
             });
         }
 
@@ -237,13 +243,14 @@ public sealed class Handlers
         // under the repository root (ProjectEvaluator skips the same folders as inputs).
         var outside = all.SelectMany(e => e.Frameworks).Select(t => t.PackagesRoot).OfType<string>()
             .Append(SdkHost.DotnetRoot).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        return EditPlanner.Plan(p.Rows, all, id => candidates.TryGetValue(id, out var c) ? c : Array.Empty<Candidate>(),
-            o, RepoRoot(p.SolutionDir), id => idFailures.TryGetValue(id, out var f) ? SourceFailureReason(f) : null, outside);
+        return EditPlanner.Plan(p.Rows, all,
+            (path, t, id) => candidates.TryGetValue(GroupKey(path, t, id), out var c) ? c : Array.Empty<Candidate>(),
+            o, RepoRoot(p.SolutionDir),
+            (path, t, id) => idFailures.TryGetValue(GroupKey(path, t, id), out var f) ? SourceFailureReason(f) : null, outside);
     }
 
     /// The feed group a (project, tfm, id) belongs to: same folder (NuGet.config), same sources, same id.
-    private static string GroupKey(string projectPath, EvaluatedTfm t, string id) =>
-        Path.GetDirectoryName(projectPath) + "|" + string.Join(";", t.RestoreSources) + "|" + id.ToLowerInvariant();
+    private static string GroupKey(string projectPath, EvaluatedTfm t, string id) => FeedKey.Of(projectPath, t, id);
 
     /// One entry per project file: `A/../A/A.csproj` and `A/A.csproj` evaluate to the same Path, and
     /// EditPlanner's `ToDictionary(p => p.Path, OrdinalIgnoreCase)` would throw on the duplicate key.

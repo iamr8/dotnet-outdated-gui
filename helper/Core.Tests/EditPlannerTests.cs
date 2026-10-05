@@ -18,8 +18,8 @@ public class EditPlannerTests
     private static ValueSite Prop(string file, int line, string name, string raw) =>
         new("property", file, line, 5, name, "property", raw, null, null, null, null, null);
 
-    private static PackageItem Ref(string id, string? version, ValueSite? site) => new(id, "PackageReference", version, null, site, null, null, false);
-    private static PackageItem Central(string id, string version, ValueSite site) => new(id, "PackageVersion", version, null, site, null, null, false);
+    private static PackageItem Ref(string id, string? version, ValueSite? site) => new(id, "PackageReference", version, null, site, null, null);
+    private static PackageItem Central(string id, string version, ValueSite site) => new(id, "PackageVersion", version, null, site, null, null);
 
     private static EvaluatedProject Proj(string name, bool cpm, params PackageItem[] items) =>
         new($"{Root}/{name}/{name}.csproj", name, new[] { new EvaluatedTfm("net8.0", "", cpm, false, $"{Root}/Directory.Packages.props", items, Array.Empty<string>()) },
@@ -29,7 +29,7 @@ public class EditPlannerTests
     private static Candidate Cand(string version, params string[] frameworks) =>
         new(NuGetVersion.Parse(version), true, null, frameworks.Select(NuGetFramework.Parse).ToList());
 
-    private static readonly Func<string, IReadOnlyList<Candidate>> FixedCandidates = _ => new[] { Cand("7.2.4"), Cand("13.0.4") };
+    private static readonly Func<string, EvaluatedTfm, string, IReadOnlyList<Candidate>> FixedCandidates = (_, _, _) => new[] { Cand("7.2.4"), Cand("13.0.4") };
 
     private static UpgradePlan Plan(IEnumerable<UpgradeRow> rows, params EvaluatedProject[] all) =>
         EditPlanner.Plan(rows.ToList(), all, FixedCandidates, new ScanOptions(), Root);
@@ -94,10 +94,32 @@ public class EditPlannerTests
         var b = new EvaluatedProject($"{Root}/B/B.csproj", "B",
             new[] { new EvaluatedTfm("net6.0", "", true, false, $"{Root}/Directory.Packages.props", new[] { Ref("Polly", null, null), Central("Polly", "7.0.0", central) }, Array.Empty<string>()) },
             new[] { $"{Root}/B/B.csproj" }, null);
-        Func<string, IReadOnlyList<Candidate>> net8Only = _ => new[] { Cand("7.2.4", "net8.0") };
+        Func<string, EvaluatedTfm, string, IReadOnlyList<Candidate>> net8Only = (_, _, _) => new[] { Cand("7.2.4", "net8.0") };
 
         var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Polly", "7.2.4") }, new[] { a, b },
             net8Only, new ScanOptions(), Root);
+
+        Assert.Empty(plan.Edits);
+        Assert.Equal("no version fits every project that shares this version", Assert.Single(plan.Skipped).Reason);
+    }
+
+    // Break: Accepts reads one consumer's candidate data for every consumer of the site.
+    [Fact]
+    public void EachConsumerIsCheckedAgainstItsOwnCandidateData()
+    {
+        // One central site, two projects with their own feeds. Only B's feed lists 7.2.4 as net8.0-only,
+        // and B targets net6.0: A's data alone would accept it.
+        var central = Meta($"{Root}/Directory.Packages.props", 3, "7.0.0", "PackageVersion");
+        EvaluatedProject P(string name, string tfm) => new($"{Root}/{name}/{name}.csproj", name,
+            new[] { new EvaluatedTfm(tfm, "", true, false, $"{Root}/Directory.Packages.props", new[] { Ref("Polly", null, null), Central("Polly", "7.0.0", central) }, Array.Empty<string>()) },
+            new[] { $"{Root}/{name}/{name}.csproj" }, null);
+        var a = P("A", "net8.0");
+        var b = P("B", "net6.0");
+        Func<string, EvaluatedTfm, string, IReadOnlyList<Candidate>> perProject =
+            (path, _, _) => path == a.Path ? new[] { Cand("7.2.4") } : new[] { Cand("7.2.4", "net8.0") };
+
+        var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Polly", "7.2.4") }, new[] { a, b },
+            perProject, new ScanOptions(), Root);
 
         Assert.Empty(plan.Edits);
         Assert.Equal("no version fits every project that shares this version", Assert.Single(plan.Skipped).Reason);
@@ -126,12 +148,12 @@ public class EditPlannerTests
         var a = Proj("A", false, Ref("Polly", "7.0.0", prop), Ref("Polly.Extensions", "7.0.0", prop));
 
         var ok = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Polly", "7.2.4") }, new[] { a },
-            _ => new[] { Cand("7.2.4") }, new ScanOptions(), Root);
+            (_, _, _) => new[] { Cand("7.2.4") }, new ScanOptions(), Root);
         Assert.Equal("property", Assert.Single(ok.Edits).Target);
         Assert.Contains(new Change(a.Path, "Polly.Extensions"), ok.AlsoChanges);
 
         var missing = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Polly", "7.2.4") }, new[] { a },
-            id => id == "Polly" ? new[] { Cand("7.2.4") } : Array.Empty<Candidate>(), new ScanOptions(), Root);
+            (_, _, id) => id == "Polly" ? new[] { Cand("7.2.4") } : Array.Empty<Candidate>(), new ScanOptions(), Root);
         Assert.Empty(missing.Edits);
         Assert.Equal("no version fits every project that shares this version", Assert.Single(missing.Skipped).Reason);
     }
@@ -153,7 +175,7 @@ public class EditPlannerTests
     {
         var central = Meta($"{Root}/Directory.Packages.props", 3, "7.0.0", "PackageVersion");
         var overrideSite = Meta($"{Root}/A/A.csproj", 5, "7.0.0", "PackageReference", "Polly", "VersionOverride");
-        var reference = new PackageItem("Polly", "PackageReference", null, "7.0.0", central, overrideSite, null, false);
+        var reference = new PackageItem("Polly", "PackageReference", null, "7.0.0", central, overrideSite, null);
         var a = Proj("A", true, reference);
 
         var plan = Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Polly", "7.2.4") }, a);
@@ -205,11 +227,43 @@ public class EditPlannerTests
     {
         var a = Proj("A", true);
         var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a },
-            _ => new[] { Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
+            (_, _, _) => new[] { Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
 
         Assert.Equal(2, plan.Edits.Count);
         Assert.Contains(plan.Edits, e => e.Op == "insert" && e.ItemType == "PackageVersion" && e.File == $"{Root}/Directory.Packages.props" && e.Value == "2.1.0");
         Assert.Contains(plan.Edits, e => e.Op == "insert" && e.ItemType == "PackageReference" && e.File == a.Path);
+    }
+
+    // Break: Plan inserts a transitive reference without checking the target against every TFM of the project.
+    [Fact]
+    public void TransitiveInsertIsSkippedWhenTheTargetDropsAFrameworkOfTheProject()
+    {
+        // A targets net8.0 and net6.0. Leaf 2.1.0 only declares net8.0, and the inserted reference
+        // would apply to both frameworks, so the net6.0 build would break.
+        var tfms = new[] { "net8.0", "net6.0" }.Select(f =>
+            new EvaluatedTfm(f, "", true, false, $"{Root}/Directory.Packages.props", Array.Empty<PackageItem>(), Array.Empty<string>())).ToArray();
+        var a = new EvaluatedProject($"{Root}/A/A.csproj", "A", tfms, new[] { $"{Root}/A/A.csproj" }, null);
+
+        var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a },
+            (_, _, _) => new[] { Cand("2.1.0", "net8.0") }, new ScanOptions(Transitive: true), Root);
+
+        Assert.Empty(plan.Edits);
+        Assert.Empty(plan.RestoreProjects);
+        Assert.Equal("the new version does not support every target framework of this project", Assert.Single(plan.Skipped).Reason);
+    }
+
+    [Fact]
+    public void TransitiveInsertIsKeptWhenTheTargetSupportsEveryFrameworkOfTheProject()
+    {
+        var tfms = new[] { "net8.0", "net6.0" }.Select(f =>
+            new EvaluatedTfm(f, "", false, false, null, Array.Empty<PackageItem>(), Array.Empty<string>())).ToArray();
+        var a = new EvaluatedProject($"{Root}/A/A.csproj", "A", tfms, new[] { $"{Root}/A/A.csproj" }, null);
+
+        var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a },
+            (_, _, _) => new[] { Cand("2.1.0", "net6.0", "net8.0") }, new ScanOptions(Transitive: true), Root);
+
+        Assert.Equal("insert", Assert.Single(plan.Edits).Op);
+        Assert.Empty(plan.Skipped);
     }
 
     [Fact]
@@ -217,7 +271,7 @@ public class EditPlannerTests
     {
         var a = Proj("A", true);
         var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a },
-            _ => new[] { Cand("2.1.0") }, new ScanOptions(), Root);
+            (_, _, _) => new[] { Cand("2.1.0") }, new ScanOptions(), Root);
 
         Assert.Empty(plan.Edits);
         Assert.Equal("transitive package - enable transitive upgrades", Assert.Single(plan.Skipped).Reason);
@@ -228,7 +282,7 @@ public class EditPlannerTests
     {
         var a = Proj("A", false);
         var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a },
-            _ => new[] { Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
+            (_, _, _) => new[] { Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
 
         var edit = Assert.Single(plan.Edits);
         Assert.Equal("insert", edit.Op);
@@ -245,7 +299,7 @@ public class EditPlannerTests
             new[] { $"{Root}/A/A.csproj" }, null);
 
         var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a },
-            _ => new[] { Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
+            (_, _, _) => new[] { Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
 
         var edit = Assert.Single(plan.Edits);
         Assert.Equal("PackageVersion", edit.ItemType);
@@ -257,11 +311,11 @@ public class EditPlannerTests
         // The central PackageVersion item exists (so a duplicate insert must never happen) but has
         // no editable site of its own - e.g. its Version chains to another property.
         var central = new PackageItem("Leaf", "PackageVersion", "2.0.0", null, null, null,
-            "property 'XVer' points to another property", false);
+            "property 'XVer' points to another property");
         var a = Proj("A", true, central);
 
         var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a },
-            _ => new[] { Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
+            (_, _, _) => new[] { Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
 
         Assert.Empty(plan.Edits);
         Assert.Equal("property 'XVer' points to another property", Assert.Single(plan.Skipped).Reason);
@@ -282,8 +336,47 @@ public class EditPlannerTests
 
         var need = EditPlanner.IdsNeedingCandidates(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a });
 
-        Assert.True(need.ContainsKey("Leaf"));
-        Assert.Equal(a.Path, need["Leaf"].ProjectPath);
+        var entry = Assert.Single(need);
+        Assert.Equal("Leaf", entry.Id);
+        Assert.Equal(a.Path, entry.ProjectPath);
+    }
+
+    // Break: IdsNeedingCandidates skips a transitive row, so the handler fetches nothing for the insert's framework check.
+    [Fact]
+    public void IdsNeedingCandidatesIncludesATransitiveRowsOwnId()
+    {
+        var a = Proj("A", false);
+
+        var need = EditPlanner.IdsNeedingCandidates(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a });
+
+        Assert.Equal((a.Path, "Leaf"), (need.Single().ProjectPath, need.Single().Id));
+    }
+
+    // Break: IdsNeedingCandidates keeps one project per id (TryAdd by id), so the second feed context is never fetched.
+    [Fact]
+    public void IdsNeedingCandidatesListsEachConsumersOwnFeedContext()
+    {
+        var central = Meta($"{Root}/Directory.Packages.props", 3, "7.0.0", "PackageVersion");
+        var a = Proj("A", true, Ref("Polly", null, null), Central("Polly", "7.0.0", central));
+        var b = Proj("B", true, Ref("Polly", null, null), Central("Polly", "7.0.0", central));
+
+        var need = EditPlanner.IdsNeedingCandidates(new[] { new UpgradeRow(a.Path, "net8.0", "Polly", "7.2.4") }, new[] { a, b });
+
+        Assert.Equal(new[] { a.Path, b.Path }, need.Select(n => n.ProjectPath).OrderBy(x => x));
+    }
+
+    [Fact]
+    public void IdsNeedingCandidatesListsOneFeedContextOnceEvenWithManyFrameworks()
+    {
+        var site = Meta($"{Root}/A/A.csproj", 4, "7.0.0");
+        EvaluatedTfm Tfm(string f, params string[] sources) =>
+            new(f, "", false, false, null, new[] { Ref("Polly", "7.0.0", site) }, sources);
+        var same = new EvaluatedProject($"{Root}/A/A.csproj", "A", new[] { Tfm("net8.0"), Tfm("net6.0") }, new[] { $"{Root}/A/A.csproj" }, null);
+        var split = new EvaluatedProject($"{Root}/A/A.csproj", "A", new[] { Tfm("net8.0", "/feed1"), Tfm("net6.0", "/feed2") }, new[] { $"{Root}/A/A.csproj" }, null);
+        var row = new[] { new UpgradeRow(same.Path, "net8.0", "Polly", "7.2.4") };
+
+        Assert.Single(EditPlanner.IdsNeedingCandidates(row, new[] { same }));
+        Assert.Equal(2, EditPlanner.IdsNeedingCandidates(row, new[] { split }).Count);
     }
 
     [Fact]
@@ -301,7 +394,7 @@ public class EditPlannerTests
             new[] { $"{Root}/A/A.csproj" }, null);
 
         var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a },
-            _ => new[] { Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
+            (_, _, _) => new[] { Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
 
         Assert.Empty(plan.Edits);
         Assert.Equal("no version fits every project that shares this version", Assert.Single(plan.Skipped).Reason);
@@ -346,7 +439,7 @@ public class EditPlannerTests
         var b = Proj("B", true, Central("Leaf", "2.0.0", central), Ref("Leaf", null, null));
 
         var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a, b },
-            _ => new[] { Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
+            (_, _, _) => new[] { Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
 
         Assert.Equal(2, plan.Edits.Count);
         Assert.Contains(plan.Edits, e => e.Op == "set" && e.File == $"{Root}/Directory.Packages.props" && e.Value == "2.1.0");
@@ -367,7 +460,7 @@ public class EditPlannerTests
             new[] { new EvaluatedTfm("net6.0", "", true, false, $"{Root}/Directory.Packages.props",
                 new[] { Central("Leaf", "2.0.0", central), Ref("Leaf", null, null) }, Array.Empty<string>()) },
             new[] { $"{Root}/B/B.csproj" }, null);
-        Func<string, IReadOnlyList<Candidate>> net8Only = _ => new[] { Cand("2.1.0", "net8.0") };
+        Func<string, EvaluatedTfm, string, IReadOnlyList<Candidate>> net8Only = (_, _, _) => new[] { Cand("2.1.0", "net8.0") };
 
         var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a, b },
             net8Only, new ScanOptions(Transitive: true), Root);
@@ -386,7 +479,7 @@ public class EditPlannerTests
             new[] { "/elsewhere/A/A.csproj" }, null);
 
         var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net8.0", "Leaf", "2.1.0") }, new[] { a },
-            _ => new[] { Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
+            (_, _, _) => new[] { Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
 
         Assert.Empty(plan.Edits);
         Assert.Equal("the version is set outside the repository", Assert.Single(plan.Skipped).Reason);
@@ -402,7 +495,7 @@ public class EditPlannerTests
         {
             new UpgradeRow(a.Path, "net8.0", "Leaf", "2.0.0"),
             new UpgradeRow(b.Path, "net8.0", "Leaf", "2.1.0"),
-        }, new[] { a, b }, _ => new[] { Cand("2.0.0"), Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
+        }, new[] { a, b }, (_, _, _) => new[] { Cand("2.0.0"), Cand("2.1.0") }, new ScanOptions(Transitive: true), Root);
 
         var central = Assert.Single(plan.Edits, e => e.ItemType == "PackageVersion");
         Assert.Equal("2.1.0", central.Value);
@@ -452,13 +545,13 @@ public class EditPlannerTests
         // "attribute"/"child"/"property", and none of the A9 checks (rewrite, repo root,
         // read-only, TFM) should treat it any differently from an ordinary metadata site.
         var site = new ValueSite("directive", $"{Root}/app.cs", 2, 1, "Humanizer.Core", "directive", "2.14.1", null, null, null, null, null);
-        var item = new PackageItem("Humanizer.Core", "PackageReference", "2.14.1", null, site, null, null, false);
+        var item = new PackageItem("Humanizer.Core", "PackageReference", "2.14.1", null, site, null, null);
         var a = new EvaluatedProject($"{Root}/app.cs", "app",
             new[] { new EvaluatedTfm("net10.0", "", false, false, null, new[] { item }, Array.Empty<string>()) },
             new[] { $"{Root}/app.cs" }, null);
 
         var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net10.0", "Humanizer.Core", "3.0.10") }, new[] { a },
-            _ => new[] { Cand("3.0.10") }, new ScanOptions(), Root);
+            (_, _, _) => new[] { Cand("3.0.10") }, new ScanOptions(), Root);
 
         var edit = Assert.Single(plan.Edits);
         Assert.Equal("set", edit.Op);
@@ -474,13 +567,13 @@ public class EditPlannerTests
     {
         // `#:package Serilog` with no `@version`: FileBasedApps.Evaluate records this as a
         // PackageItem with no VersionSite and a SiteProblem - there is nowhere to write the edit.
-        var item = new PackageItem("Serilog", "PackageReference", null, null, null, null, "the directive has no version", false);
+        var item = new PackageItem("Serilog", "PackageReference", null, null, null, null, "the directive has no version");
         var a = new EvaluatedProject($"{Root}/app.cs", "app",
             new[] { new EvaluatedTfm("net10.0", "", false, false, null, new[] { item }, Array.Empty<string>()) },
             new[] { $"{Root}/app.cs" }, null);
 
         var plan = EditPlanner.Plan(new[] { new UpgradeRow(a.Path, "net10.0", "Serilog", "3.0.0") }, new[] { a },
-            _ => new[] { Cand("3.0.0") }, new ScanOptions(), Root);
+            (_, _, _) => new[] { Cand("3.0.0") }, new ScanOptions(), Root);
 
         Assert.Empty(plan.Edits);
         Assert.Equal("the directive has no version", Assert.Single(plan.Skipped).Reason);

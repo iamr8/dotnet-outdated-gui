@@ -72,7 +72,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     // Volatile: a scan task re-reads both on its background thread; the EDT reads them for the toolbar.
     @Volatile private var solution: Solution? = null
-    /** Names of the solution's projects to include in the view (empty = show everything). */
+    /** [SolutionProject.key]s of the solution's projects to include in the view (empty = show everything). */
     @Volatile private var includedProjects: MutableSet<String> = linkedSetOf()
     /** Last scan result; the view is built from this. */
     private var allRows: List<PackageSection> = emptyList()
@@ -138,7 +138,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
             // The window must still open. The scope stays empty and the next scan reads the file again.
             solutionReadFailed(e, known = false)
         }
-        includedProjects = solution?.projects?.map { it.name }?.toMutableSet() ?: linkedSetOf()
+        includedProjects = solution?.projects?.map { it.key }?.toMutableSet() ?: linkedSetOf()
         toolbar.updateActionsAsync()
     }
 
@@ -150,7 +150,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
      */
     private fun refreshSolution(): Solution? {
         val known = solution
-        val before = known?.projects?.map { it.name }.orEmpty()
+        val before = known?.projects?.map { it.key }.orEmpty()
         val fresh = try {
             SolutionModel.discover(File(basePath()), project.name)
         } catch (e: IOException) {
@@ -158,7 +158,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
             return known
         }
         solutionUnreadable = false
-        includedProjects = mergeScope(includedProjects, before, fresh?.projects?.map { it.name }.orEmpty())
+        includedProjects = mergeScope(includedProjects, before, fresh?.projects?.map { it.key }.orEmpty())
         solution = fresh
         return fresh
     }
@@ -270,7 +270,7 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         if (projects.isEmpty()) return
         val panel = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS); border = JBUI.Borders.empty(8) }
         val boxes = projects.map { p ->
-            JBCheckBox(p.name, p.name in includedProjects).also { panel.add(it) }
+            JBCheckBox(p.name, p.key in includedProjects).also { it.toolTipText = p.path; panel.add(it) }
         }
         val popup = JBPopupFactory.getInstance()
             .createComponentPopupBuilder(JBScrollPane(panel), boxes.firstOrNull())
@@ -281,9 +281,9 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         popup.setFinalRunnable {
             var next = projects.indices
                 .filter { boxes[it].isSelected }
-                .map { projects[it].name }
+                .map { projects[it].key }
                 .toMutableSet()
-            if (next.isEmpty()) next = projects.map { it.name }.toMutableSet()
+            if (next.isEmpty()) next = projects.map { it.key }.toMutableSet()
             if (next != before) {
                 includedProjects = next
                 toolbar.updateActionsAsync()
@@ -393,15 +393,16 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
         if (outcome == RiderRestore.Outcome.RIDER_RESTORED) changed.forEach(engine::markChanged) // Rider rewrote their obj files
         if (ours.isEmpty()) return emptyList()
         indicator.text = "Restoring ${ours.size} project(s)…"
-        return restore(ours, options, indicator, afterUpgrade)
+        // [alwaysOurs] are the floating projects: only they are restored with --force-evaluate.
+        return restore(ours, options, indicator, afterUpgrade, forceEvaluate = alwaysOurs)
     }
 
     /** Runs `dotnet restore`, then tells the engine: restore rewrites the obj folder's `*.nuget.g.props`, which evaluation imports. */
-    private fun restore(paths: List<String>, options: OutdatedOptions, indicator: ProgressIndicator, afterUpgrade: Boolean): List<ScanFailure> {
+    private fun restore(paths: List<String>, options: OutdatedOptions, indicator: ProgressIndicator, afterUpgrade: Boolean, forceEvaluate: List<String>): List<ScanFailure> {
         val failures = try {
             restorer.restore(
                 paths, solution?.solutionPath, solution?.projects?.map { it.path }.orEmpty(),
-                options.runtime, workDir(), restoreTimeoutMs(options), indicator, afterUpgrade,
+                options.runtime, workDir(), restoreTimeoutMs(options), indicator, afterUpgrade, forceEvaluate,
             )
         } catch (e: ExecutionException) {
             // dotnet could not even be started - an environment failure, not a plugin bug.
@@ -480,8 +481,8 @@ class OutdatedPanel(private val project: Project) : JPanel(BorderLayout()) {
                 val sln = refreshSolution()
                 if (rows.isEmpty()) return
                 // Every solution project may share a version with a checked row, so all are consumers.
-                val allNames = sln?.projects?.map { it.name }?.toSet().orEmpty()
-                val allPaths = enginePaths(ScanPlan.projectPaths(sln, allNames, File(basePath()), options.recursive, options.includeFileBasedApps), trusted)
+                val allIncluded = sln?.projects?.map { it.key }?.toSet().orEmpty()
+                val allPaths = enginePaths(ScanPlan.projectPaths(sln, allIncluded, File(basePath()), options.recursive, options.includeFileBasedApps), trusted)
                 plan = engine.call(
                     workDir(), "planUpgrade",
                     PlanParams(workDir(), allPaths, rows, EngineOptions.from(options, checkUpdates = true)),
@@ -711,12 +712,13 @@ internal fun restoreOnlyPlan(checked: List<CheckedRow>, noRestore: Boolean): Pai
 }
 
 /**
- * Pure: the scope after the solution is re-read. A project the user left out stays out, a project
- * added since [oldNames] comes in, a removed one goes. An empty result means all, as in the scope picker.
+ * Pure: the scope after the solution is re-read, by [SolutionProject.key]. A project the user left out
+ * stays out, a project added since [oldKeys] comes in, a removed one goes. An empty result means all,
+ * as in the scope picker.
  */
-internal fun mergeScope(oldIncluded: Set<String>, oldNames: List<String>, newNames: List<String>): MutableSet<String> {
-    val merged = newNames.filterTo(linkedSetOf()) { it in oldIncluded || it !in oldNames }
-    return if (merged.isEmpty()) newNames.toMutableSet() else merged
+internal fun mergeScope(oldIncluded: Set<String>, oldKeys: List<String>, newKeys: List<String>): MutableSet<String> {
+    val merged = newKeys.filterTo(linkedSetOf()) { it in oldIncluded || it !in oldKeys }
+    return if (merged.isEmpty()) newKeys.toMutableSet() else merged
 }
 
 /** Pure: restore runs the repository's MSBuild targets, so only a trusted project with restore on gets it. */

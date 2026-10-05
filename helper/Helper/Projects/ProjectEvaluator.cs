@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Text.RegularExpressions;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Definition;
@@ -146,7 +147,17 @@ public sealed class ProjectEvaluator
         // Same write-then-re-check pattern as the MSBuild path below: snapshot the generation before
         // the (slow, out-of-process) evaluation, and if an Invalidate ran meanwhile, drop only this entry.
         var generation = Volatile.Read(ref _generation);
-        var result = FileBasedApps.Evaluate(path, _dotnetRoot, ct);
+        EvaluatedProject result;
+        try
+        {
+            result = FileBasedApps.Evaluate(path, _dotnetRoot, ct);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or Win32Exception)
+        {
+            // The file or its folder is gone or unreadable, or dotnet cannot start: a project error
+            // (like InvalidProjectFileException below), not a bug. Not cached.
+            return new EvaluatedProject(path, name, Array.Empty<EvaluatedTfm>(), new[] { path }, e.Message.Split('\n')[0].Trim());
+        }
         _cache[key] = result;
         if (Volatile.Read(ref _generation) != generation)
             _cache.TryRemove(new KeyValuePair<string, EvaluatedProject>(key, result));
@@ -191,13 +202,15 @@ public sealed class ProjectEvaluator
                     NullIfEmpty(item.GetMetadataValue("VersionOverride")),
                     vSite,
                     oSite,
-                    oProblem ?? vProblem,
-                    string.Equals(item.GetMetadataValue("PrivateAssets").Trim(), "all", StringComparison.OrdinalIgnoreCase)));
+                    oProblem ?? vProblem));
             }
         }
 
-        var sources = (p.GetPropertyValue("RestoreSources") + ";" + p.GetPropertyValue("RestoreAdditionalProjectSources"))
-            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        // Not merged: RestoreSources replaces the NuGet.config sources, RestoreAdditionalProjectSources
+        // adds to them. The SDK leaves RestoreSources empty and fills only the additional one (its
+        // library-packs folder), so a normal project keeps its config sources.
+        var sources = SplitList(p.GetPropertyValue("RestoreSources"));
+        var additional = SplitList(p.GetPropertyValue("RestoreAdditionalProjectSources"));
 
         return new EvaluatedTfm(
             tfm,
@@ -207,14 +220,22 @@ public sealed class ProjectEvaluator
             NullIfEmpty(p.GetPropertyValue("DirectoryPackagesPropsPath")),
             items,
             sources,
-            NullIfEmpty(p.GetPropertyValue("NuGetPackageRoot")));
+            NullIfEmpty(p.GetPropertyValue("NuGetPackageRoot")),
+            additional);
     }
+
+    private static List<string> SplitList(string value) =>
+        value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
     private static (ValueSite?, string?) Site(Project p, ProjectItem item, string metadataName)
     {
         var m = item.GetMetadata(metadataName);
         if (m == null) return (null, null);
         if (m.Xml?.Parent is not ProjectItemElement owner) return (null, "version comes from an item definition");
+        // A child element can carry its own Condition (an attribute cannot). The site only records
+        // the owner item's condition, and the edit takes the first matching child, so it could hit
+        // the wrong element.
+        if (m.Xml.Condition.Length > 0) return (null, "the version element has its own condition - edit it by hand");
 
         var identityAttr = owner.Include.Length > 0 ? "Include" : "Update";
         var identity = owner.Include.Length > 0 ? owner.Include : owner.Update;

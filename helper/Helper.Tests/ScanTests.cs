@@ -120,6 +120,29 @@ public class ScanTests
         Assert.Equal(JsonValueKind.Null, Row(r, "Lib.X").GetProperty("blocked").ValueKind);
     }
 
+    // Break: skip the framework check for a PrivateAssets="all" package (the old development-dependency bypass).
+    [Fact]
+    public void PrivatePackageWhoseNewVersionDropsTheFrameworkIsNotOffered()
+    {
+        var dir = FixtureSolution.NewDir();
+        // 2.0.0 has dependency groups for net9.0 only: a project on FixtureSolution.Tfm cannot use it.
+        var feed = FixtureFeed.Create(dir,
+            new FixtureFeed.Package("Build.Tool", "1.0.0", Array.Empty<string>()),
+            new FixtureFeed.Package("Build.Tool", "2.0.0", new[] { "net9.0" }));
+        FixtureSolution.WriteNuGetConfig(dir, ("local", feed));
+        FixtureSolution.Write(dir, "P/P.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFramework>{FixtureSolution.Tfm}</TargetFramework></PropertyGroup>
+  <ItemGroup><PackageReference Include=""Build.Tool"" Version=""1.0.0"" PrivateAssets=""all"" /></ItemGroup>
+</Project>");
+        var project = Path.Combine(dir, "P/P.csproj");
+        FixtureSolution.Restore(project);
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project }, new { includeUpToDate = true });
+
+        Assert.Equal(JsonValueKind.Null, Row(r, "Build.Tool").GetProperty("target").ValueKind);
+    }
+
     [Fact]
     public void OfflineListingHasNoTargets()
     {
@@ -238,6 +261,129 @@ public class ScanTests
         var row = Row(r, "Widget");
         Assert.Equal(JsonValueKind.Null, row.GetProperty("target").ValueKind);
         Assert.Contains("sign-in needed", row.GetProperty("reason").GetString());
+    }
+
+    // Break: Scan reads candidates with GetCandidatesAsync, which drops the failure of the metadata call.
+    [Fact]
+    public void FailedMetadataCallMarksRowInsteadOfHidingIt()
+    {
+        using var listener = new HttpListener();
+        var port = FreePort();
+        var root = $"http://127.0.0.1:{port}";
+        listener.Prefixes.Add($"{root}/");
+        listener.Start();
+        // A V3 feed whose version list (flat container) works but whose metadata (registration) fails.
+        // The index lists both registration types, as nuget.org does: the NuGet in SDK 6 knows
+        // RegistrationsBaseUrl/3.4.0 but not /3.6.0, and without a known type it throws (baseUrl is null).
+        _ = Task.Run(async () =>
+        {
+            while (listener.IsListening)
+            {
+                HttpListenerContext ctx;
+                try { ctx = await listener.GetContextAsync(); } catch { break; }
+                var body = ctx.Request.Url!.AbsolutePath switch
+                {
+                    "/v3/index.json" => $@"{{""version"":""3.0.0"",""resources"":[{{""@id"":""{root}/flat/"",""@type"":""PackageBaseAddress/3.0.0""}},{{""@id"":""{root}/reg/"",""@type"":""RegistrationsBaseUrl/3.4.0""}},{{""@id"":""{root}/reg/"",""@type"":""RegistrationsBaseUrl/3.6.0""}}]}}",
+                    "/flat/widget/index.json" => @"{""versions"":[""1.0.0"",""2.0.0""]}",
+                    _ => null,
+                };
+                if (body == null)
+                {
+                    ctx.Response.StatusCode = 500;
+                }
+                else
+                {
+                    ctx.Response.ContentType = "application/json";
+                    ctx.Response.OutputStream.Write(System.Text.Encoding.UTF8.GetBytes(body));
+                }
+                ctx.Response.Close();
+            }
+        });
+
+        var dir = FixtureSolution.NewDir();
+        var feed = FixtureFeed.Create(dir, ("Widget", new[] { "1.0.0" }));
+        FixtureSolution.WriteNuGetConfig(dir, ("local", feed));
+        FixtureSolution.Write(dir, "P/P.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFramework>{FixtureSolution.Tfm}</TargetFramework></PropertyGroup>
+  <ItemGroup><PackageReference Include=""Widget"" Version=""1.0.0"" /></ItemGroup>
+</Project>");
+        var project = Path.Combine(dir, "P/P.csproj");
+        FixtureSolution.Restore(project); // against the local feed only
+        FixtureSolution.Write(dir, "NuGet.config", $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<configuration>
+  <config><add key=""globalPackagesFolder"" value=""{Path.Combine(dir, ".packages")}"" /></config>
+  <packageSources><clear /><add key=""local"" value=""{feed}"" /><add key=""private"" value=""{root}/v3/index.json"" allowInsecureConnections=""true"" /></packageSources>
+</configuration>");
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project });
+
+        var row = Row(r, "Widget");
+        Assert.Equal(JsonValueKind.Null, row.GetProperty("target").ValueKind);
+        Assert.Contains("'private' failed", row.GetProperty("reason").GetString());
+    }
+
+    private static (string dir, string project) SourcePropertySetup(string property)
+    {
+        var dir = FixtureSolution.NewDir();
+        var configFeed = FixtureFeed.Create(Path.Combine(dir, "a"), ("Polly", new[] { "7.0.0", "9.0.0" }));
+        var projectFeed = FixtureFeed.Create(Path.Combine(dir, "b"), ("Polly", new[] { "7.0.0", "7.2.4" }));
+        FixtureSolution.WriteNuGetConfig(dir, ("config", configFeed));
+        FixtureSolution.Write(dir, "P/P.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFramework>{FixtureSolution.Tfm}</TargetFramework><{property}>{projectFeed}</{property}></PropertyGroup>
+  <ItemGroup><PackageReference Include=""Polly"" Version=""7.0.0"" /></ItemGroup>
+</Project>");
+        var project = Path.Combine(dir, "P/P.csproj");
+        FixtureSolution.Restore(project);
+        return (dir, project);
+    }
+
+    // Break: add RestoreSources to the NuGet.config sources instead of replacing them (9.0.0 comes back).
+    [Fact]
+    public void RestoreSourcesReplaceTheConfigSources()
+    {
+        var (dir, project) = SourcePropertySetup("RestoreSources");
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project });
+
+        Assert.Equal("7.2.4", Row(r, "Polly").GetProperty("target").GetString());
+    }
+
+    // Break: drop RestoreAdditionalProjectSources, or let it replace the config sources.
+    [Fact]
+    public void RestoreAdditionalProjectSourcesAddToTheConfigSources()
+    {
+        var (dir, project) = SourcePropertySetup("RestoreAdditionalProjectSources");
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project });
+
+        Assert.Equal("9.0.0", Row(r, "Polly").GetProperty("target").GetString()); // config has 9.0.0, the project's source adds 7.2.4
+    }
+
+    // Break: resolve a relative RestoreSources / RestoreAdditionalProjectSources entry against the helper's folder, not the project's.
+    [Theory]
+    [InlineData("RestoreSources")]
+    [InlineData("RestoreAdditionalProjectSources")]
+    public void RelativeSourceEntryIsResolvedAgainstTheProjectFolder(string property)
+    {
+        var dir = FixtureSolution.NewDir();
+        FixtureFeed.Create(Path.Combine(dir, "b"), ("Polly", new[] { "7.0.0", "7.2.4" }));
+        // No NuGet.config source: the project's own entry is the only way to reach the feed. The helper
+        // runs from `dir`, the project from `dir/P`, so "../b/feed" only points at the feed from there.
+        FixtureSolution.WriteNuGetConfig(dir);
+        FixtureSolution.Write(dir, "P/P.csproj", $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFramework>{FixtureSolution.Tfm}</TargetFramework><{property}>../b/feed</{property}></PropertyGroup>
+  <ItemGroup><PackageReference Include=""Polly"" Version=""7.0.0"" /></ItemGroup>
+</Project>");
+        var project = Path.Combine(dir, "P/P.csproj");
+        FixtureSolution.Restore(project);
+        using var h = HelperProcess.Start(dir);
+
+        var r = Scan(h, dir, new[] { project });
+
+        Assert.Equal("7.2.4", Row(r, "Polly").GetProperty("target").GetString());
     }
 
     [Fact]

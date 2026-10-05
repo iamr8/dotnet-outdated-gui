@@ -106,6 +106,26 @@ public class ProjectEvaluatorTests
         Assert.Equal("version mixes text and properties", item.GetProperty("siteProblem").GetString());
     }
 
+    // Break: Site ignores the Condition on a <Version> child element and returns the owner item's site.
+    [Fact]
+    public void VersionChildWithItsOwnConditionIsASiteProblem()
+    {
+        var dir = FixtureSolution.NewDir();
+        // The condition is true here, so the child is the effective Version. The owner item has no
+        // condition, so a site built from the owner would let an edit hit the wrong element.
+        FixtureSolution.Write(dir, "C/C.csproj", @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include=""Polly""><Version Condition=""'$(MSBuildProjectName)' != ''"">7.0.0</Version></PackageReference>
+  </ItemGroup>
+</Project>");
+
+        var item = Item(Evaluate(dir, "C/C.csproj").GetProperty("frameworks")[0], "PackageReference", "Polly");
+
+        Assert.Equal(JsonValueKind.Null, item.GetProperty("versionSite").ValueKind);
+        Assert.Equal("the version element has its own condition - edit it by hand", item.GetProperty("siteProblem").GetString());
+    }
+
     [Fact]
     public void NestedGlobalJsonWithOtherSdkIsAProjectError()
     {

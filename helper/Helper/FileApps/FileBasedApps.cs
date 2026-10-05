@@ -81,7 +81,7 @@ public static class FileBasedApps
         var items = Directives.Parse(File.ReadAllText(csFile)).Select(d => new PackageItem(
             d.Id, "PackageReference", d.Version, null,
             d.Version == null ? null : new ValueSite("directive", csFile, d.Line, d.Column, d.Id, "directive", d.Version, null, null, null, null, null),
-            null, d.Version == null ? "the directive has no version" : null, false)).ToList();
+            null, d.Version == null ? "the directive has no version" : null)).ToList();
         return new EvaluatedProject(csFile, name, new[] { new EvaluatedTfm(tfm, assets, false, false, null, items, Array.Empty<string>()) },
             new[] { csFile }, null);
     }
