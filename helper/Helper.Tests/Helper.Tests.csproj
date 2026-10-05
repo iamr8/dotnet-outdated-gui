@@ -13,6 +13,12 @@
     <ProjectReference Include="../Core/Core.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- AssetsReaderTests run AssetsReader in this process. Its source is linked: the helper is not loaded.
+         NuGet.ProjectModel is a runtime reference of the tests only. The helper project does not change. -->
+    <PackageReference Include="NuGet.ProjectModel" Version="6.0.0" NoWarn="NU1903" />
+    <Compile Include="../Helper/Projects/AssetsReader.cs" Link="Linked/AssetsReader.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>HelperDll</_Parameter1>
       <_Parameter2>$(MSBuildThisFileDirectory)../Helper/bin/$(Configuration)/net6.0/Helper.dll</_Parameter2>

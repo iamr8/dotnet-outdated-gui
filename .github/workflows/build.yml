@@ -135,11 +135,12 @@ jobs:
           test -n "$ver" || { echo "::error::no ${{ matrix.sdk }} SDK found"; exit 1; }
           echo "HELPER_TEST_SDK=$ver" >> "$GITHUB_ENV"
       - name: Core tests
-        run: dotnet test helper/Core.Tests -v q
+        run: dotnet test helper/Core.Tests -v q --logger "console;verbosity=normal"
       - name: Helper tests
         env:
           HELPER_TEST_TFM: ${{ matrix.tfm }}
-        run: dotnet test helper/Helper.Tests -v q
+        # Quiet build output, but print the message and stack of any failed test.
+        run: dotnet test helper/Helper.Tests -v q --logger "console;verbosity=normal"
 
   # One stable check name for branch protection: matrix job names change with the matrix.
   helper-tests-result:
